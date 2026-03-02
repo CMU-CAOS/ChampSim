@@ -29,19 +29,20 @@
 #include "util/span.h"
 #include "vmem.h"
 
-PageTableWalker::PageTableWalker(champsim::ptw_builder b)
-    : champsim::operable(b.m_clock_period), upper_levels(b.m_uls), lower_level(b.m_ll), NAME(b.m_name),
-      MSHR_SIZE(b.m_mshr_size.value_or(std::lround(b.m_mshr_factor * std::floor(std::size(upper_levels))))),
-      MAX_READ(b.m_max_tag_check.value_or(champsim::bandwidth::maximum_type{b.scaled_by_ul_size(b.m_bandwidth_factor)})),
-      MAX_FILL(b.m_max_fill.value_or(champsim::bandwidth::maximum_type{b.scaled_by_ul_size(b.m_bandwidth_factor)})),
-      HIT_LATENCY(b.m_clock_period * b.m_latency), vmem(b.m_vmem), CR3_addr(b.m_vmem->get_pte_pa(b.m_cpu, champsim::page_number{}, b.m_vmem->pt_levels).first)
+PageTableWalker::PageTableWalker(champsim::modules::ModuleBuilder builder)
+    : champsim::modules::page_table_walker_module(builder.get_parameter<champsim::chrono::picoseconds>("clock_period")), upper_levels(builder.get_parameter<std::vector<champsim::channel*>>("upper_levels")), lower_level(builder.get_parameter<champsim::channel*>("lower_level")), NAME(builder.get_name()),
+      MSHR_SIZE(builder.get_parameter<uint32_t>("mshr_size")),
+      MAX_READ(builder.get_parameter<champsim::bandwidth::maximum_type>("max_tag_check")),
+      MAX_FILL(builder.get_parameter<champsim::bandwidth::maximum_type>("max_fill")),
+      HIT_LATENCY(builder.get_parameter<unsigned>("latency")), vmem(builder.get_parameter<VirtualMemory*>("vmem")), CR3_addr(vmem->get_pte_pa(builder.get_parameter<uint32_t>("cpu"), champsim::page_number{}, vmem->pt_levels).first)
 {
-  std::vector<decltype(b.m_pscl)::value_type> local_pscl_dims{};
-  std::remove_copy_if(std::begin(b.m_pscl), std::end(b.m_pscl), std::back_inserter(local_pscl_dims), [](auto x) { return std::get<0>(x) == 0; });
+  auto m_pscl = builder.get_parameter<std::array<std::array<uint32_t, 3>, 16>>("pscl_dims");
+  std::vector<decltype(m_pscl)::value_type> local_pscl_dims{};
+  std::remove_copy_if(std::begin(m_pscl), std::end(m_pscl), std::back_inserter(local_pscl_dims), [](auto x) { return std::get<0>(x) == 0; });
   std::sort(std::begin(local_pscl_dims), std::end(local_pscl_dims), std::greater{});
 
   for (auto [level, sets, ways] : local_pscl_dims) {
-    pscl.emplace_back(sets, ways, pscl_indexer{b.m_vmem->shamt(level)}, pscl_indexer{b.m_vmem->shamt(level)});
+    pscl.emplace_back(sets, ways, pscl_indexer{vmem->shamt(level)}, pscl_indexer{vmem->shamt(level)});
   }
 }
 
@@ -240,3 +241,5 @@ void PageTableWalker::print_deadlock()
   });
 }
 // LCOV_EXCL_STOP
+
+champsim::modules::page_table_walker_module::register_module<PageTableWalker> ptw_module("PTW");

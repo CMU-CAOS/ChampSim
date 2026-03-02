@@ -169,6 +169,16 @@ bool O3_CPU::do_predict_branch(ooo_model_instr& arch_instr)
   return stop_fetch;
 }
 
+void O3_CPU::push_instruction(ooo_model_instr instr)
+{
+  input_queue.push_back(instr);
+}
+
+std::size_t O3_CPU::instructions_requested()
+{
+  return IN_QUEUE_SIZE - static_cast<long>(std::size(input_queue));
+}
+
 bool O3_CPU::do_init_instruction(ooo_model_instr& arch_instr)
 {
   // fast warmup eliminates register dependencies between instructions branch predictor, cache contents, and prefetchers are still warmed up
@@ -835,3 +845,5 @@ bool CacheBus::issue_write(request_type data_packet)
 
   return lower_level->add_wq(data_packet);
 }
+
+champsim::modules::core_module::register_module<O3_CPU> default_cpu_module("O3_CPU");

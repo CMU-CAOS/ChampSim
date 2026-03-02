@@ -8,9 +8,9 @@
 
 champsim::modules::replacement::register_module<srrip> srrip_register("srrip");
 
-srrip::srrip(std::string name, CACHE* cache, champsim::modules::ModuleBuilder builder) : srrip(cache, cache->NUM_SET, cache->NUM_WAY) {}
+srrip::srrip(champsim::modules::ModuleBuilder builder) : srrip(builder.get_parent<champsim::modules::cache_module>(), builder.get_parent<champsim::modules::cache_module>()->num_sets(), builder.get_parent<champsim::modules::cache_module>()->num_ways()) {}
 
-srrip::srrip(CACHE* cache, long sets_, long ways_)
+srrip::srrip(champsim::modules::cache_module* cache, long sets_, long ways_)
 {
   std::generate_n(std::back_inserter(sets), sets_, [ways = ways_] { return srrip_set_helper{ways}; });
 }

@@ -67,8 +67,8 @@ int main(int argc, char** argv) // NOLINT(bugprone-exception-escape)
   std::vector<std::string> trace_names;
 
   auto set_heartbeat_callback = [&](auto) {
-    for (O3_CPU& cpu : gen_environment.cpu_view()) {
-      cpu.show_heartbeat = false;
+    for (champsim::modules::core_module& cpu : gen_environment.cpu_view()) {
+      cpu.quiet(true);
     }
   };
 
@@ -132,12 +132,8 @@ int main(int argc, char** argv) // NOLINT(bugprone-exception-escape)
 
   champsim::plain_printer{std::cout}.print(phase_stats);
 
-  for (CACHE& cache : gen_environment.cache_view()) {
-    cache.impl_prefetcher_final_stats();
-  }
-
-  for (CACHE& cache : gen_environment.cache_view()) {
-    cache.impl_replacement_final_stats();
+  for (champsim::operable& op : gen_environment.operable_view()) {
+    op.end_simulation();
   }
 
   if (json_option->count() > 0) {

@@ -28,125 +28,131 @@
 namespace champsim::defaults
 {
 const auto default_core =
-    champsim::core_builder{}
-        .dib_set(32)
-        .dib_way(8)
-        .dib_window(16)
-        .ifetch_buffer_size(64)
-        .decode_buffer_size(32)
-        .dispatch_buffer_size(32)
-        .dib_hit_buffer_size(32) // assumed
-        .register_file_size(128)
-        .rob_size(352)
-        .lq_size(128)
-        .sq_size(72)
-        .fetch_width(champsim::bandwidth::maximum_type{6})
-        .decode_width(champsim::bandwidth::maximum_type{6})
-        .dispatch_width(champsim::bandwidth::maximum_type{6})
-        .execute_width(champsim::bandwidth::maximum_type{4})
-        .lq_width(champsim::bandwidth::maximum_type{2})
-        .sq_width(champsim::bandwidth::maximum_type{2})
-        .retire_width(champsim::bandwidth::maximum_type{5})
-        .dib_inorder_width(champsim::bandwidth::maximum_type{5}) // assumed
-        .mispredict_penalty(1)
-        .schedule_width(champsim::bandwidth::maximum_type{128})
-        .decode_latency(1)
-        .dib_hit_latency(1)
-        .dispatch_latency(1)
-        .schedule_latency(0)
-        .execute_latency(0)
-        .l1i_bandwidth(champsim::bandwidth::maximum_type{1})
-        .l1d_bandwidth(champsim::bandwidth::maximum_type{1})
-        .branch_predictor("hashed_perceptron")
-        .btb("basic_btb");
+    champsim::modules::ModuleBuilder{}
+        .add_parameter("dib_set", 32)
+        .add_parameter("dib_way", 8)
+        .add_parameter("dib_window", 16)
+        .add_parameter("ifetch_buffer_size", 64)
+        .add_parameter("decode_buffer_size", 32)
+        .add_parameter("dispatch_buffer_size", 32)
+        .add_parameter("dib_hit_buffer_size", 32) // assumed
+        .add_parameter("register_file_size", 128)
+        .add_parameter("rob_size", 352)
+        .add_parameter("lq_size", 128)
+        .add_parameter("sq_size", 72)
+        .add_parameter("fetch_width", champsim::bandwidth::maximum_type{6})
+        .add_parameter("decode_width", champsim::bandwidth::maximum_type{6})
+        .add_parameter("dispatch_width", champsim::bandwidth::maximum_type{6})
+        .add_parameter("execute_width", champsim::bandwidth::maximum_type{4})
+        .add_parameter("lq_width", champsim::bandwidth::maximum_type{2})
+        .add_parameter("sq_width", champsim::bandwidth::maximum_type{2})
+        .add_parameter("retire_width", champsim::bandwidth::maximum_type{5})
+        .add_parameter("dib_inorder_width", champsim::bandwidth::maximum_type{5}) // assumed
+        .add_parameter("mispredict_penalty", 1)
+        .add_parameter("schedule_width", champsim::bandwidth::maximum_type{128})
+        .add_parameter("decode_latency", 1)
+        .add_parameter("dib_hit_latency", 1)
+        .add_parameter("dispatch_latency", 1)
+        .add_parameter("schedule_latency", 0)
+        .add_parameter("execute_latency", 0)
+        .add_parameter("l1i_bandwidth", champsim::bandwidth::maximum_type{1})
+        .add_parameter("l1d_bandwidth", champsim::bandwidth::maximum_type{1})
+        .add_parameter("branch_predictor", "hashed_perceptron")
+        .add_parameter("btb", "basic_btb");
 
-const auto default_l1i = champsim::cache_builder{}
-                             .sets_factor(64)
-                             .ways(8)
-                             .pq_size(32)
-                             .offset_bits(champsim::data::bits{LOG2_BLOCK_SIZE})
-                             .reset_prefetch_as_load()
-                             .set_virtual_prefetch()
-                             .set_wq_checks_full_addr()
-                             .prefetch_activate(access_type::LOAD, access_type::PREFETCH)
-                             .prefetcher("no")
-                             .replacement("lru");
+const auto default_l1i = champsim::modules::ModuleBuilder{}
+                             .add_parameter("sets_factor", 64)
+                             .add_parameter("ways", 8)
+                             .add_parameter("pq_size", 32)
+                             .add_parameter("offset_bits", champsim::data::bits{LOG2_BLOCK_SIZE})
+                             .add_parameter("reset_prefetch_as_load", false)
+                             .add_parameter("virtual_prefetch", true)
+                             .add_parameter("wq_checks_full_addr", true)
+                             .add_parameter("prefetch_activate", std::vector<access_type>{access_type::LOAD, access_type::PREFETCH})
+                             .add_parameter("prefetcher", "no")
+                             .add_parameter("replacement", "lru");
 
-const auto default_l1d = champsim::cache_builder{}
-                             .sets_factor(64)
-                             .ways(12)
-                             .pq_size(8)
-                             .offset_bits(champsim::data::bits{LOG2_BLOCK_SIZE})
-                             .reset_prefetch_as_load()
-                             .reset_virtual_prefetch()
-                             .set_wq_checks_full_addr()
-                             .prefetch_activate(access_type::LOAD, access_type::PREFETCH)
-                             .prefetcher("no")
-                             .replacement("lru");
+const auto default_l1d = champsim::modules::ModuleBuilder{}
+                             .add_parameter("sets_factor", 64)
+                             .add_parameter("ways", 12)
+                             .add_parameter("pq_size", 8)
+                             .add_parameter("offset_bits", champsim::data::bits{LOG2_BLOCK_SIZE})
+                             .add_parameter("reset_prefetch_as_load", false)
+                             .add_parameter("virtual_prefetch", false)
+                             .add_parameter("wq_checks_full_addr", true)
+                             .add_parameter("prefetch_activate", std::vector<access_type>{access_type::LOAD, access_type::PREFETCH})
+                             .add_parameter("prefetcher", "no")
+                             .add_parameter("replacement", "lru");
 
-const auto default_l2c = champsim::cache_builder{}
-                             .sets_factor(512)
-                             .ways(8)
-                             .pq_size(16)
-                             .offset_bits(champsim::data::bits{LOG2_BLOCK_SIZE})
-                             .reset_prefetch_as_load()
-                             .reset_virtual_prefetch()
-                             .reset_wq_checks_full_addr()
-                             .prefetch_activate(access_type::LOAD, access_type::PREFETCH)
-                             .prefetcher("no")
-                             .replacement("lru");
+const auto default_l2c = champsim::modules::ModuleBuilder{}
+                             .add_parameter("sets_factor", 512)
+                             .add_parameter("ways", 8)
+                             .add_parameter("pq_size", 16)
+                             .add_parameter("offset_bits", champsim::data::bits{LOG2_BLOCK_SIZE})
+                             .add_parameter("reset_prefetch_as_load", false)
+                             .add_parameter("virtual_prefetch", false)
+                             .add_parameter("wq_checks_full_addr", true)
+                             .add_parameter("prefetch_activate", std::vector<access_type>{access_type::LOAD, access_type::PREFETCH})
+                             .add_parameter("prefetcher", "no")
+                             .add_parameter("replacement", "lru");
 
-const auto default_itlb = champsim::cache_builder{}
-                              .sets_factor(16)
-                              .ways(4)
-                              .pq_size(0)
-                              .offset_bits(champsim::data::bits{LOG2_PAGE_SIZE})
-                              .reset_prefetch_as_load()
-                              .set_virtual_prefetch()
-                              .set_wq_checks_full_addr()
-                              .prefetch_activate(access_type::LOAD, access_type::PREFETCH)
-                              .prefetcher("no")
-                              .replacement("lru");
+const auto default_itlb = champsim::modules::ModuleBuilder{}
+                              .add_parameter("sets_factor", 16)
+                              .add_parameter("ways", 4)
+                              .add_parameter("pq_size", 0)
+                              .add_parameter("offset_bits", champsim::data::bits{LOG2_PAGE_SIZE})
+                              .add_parameter("reset_prefetch_as_load", false)
+                              .add_parameter("virtual_prefetch", true)
+                              .add_parameter("wq_checks_full_addr", true)
+                              .add_parameter("prefetch_activate", std::vector<access_type>{access_type::LOAD, access_type::PREFETCH})
+                              .add_parameter("prefetcher", "no")
+                              .add_parameter("replacement", "lru");
 
-const auto default_dtlb = champsim::cache_builder{}
-                              .sets_factor(16)
-                              .ways(4)
-                              .pq_size(0)
-                              .mshr_size(8)
-                              .offset_bits(champsim::data::bits{LOG2_PAGE_SIZE})
-                              .reset_prefetch_as_load()
-                              .reset_virtual_prefetch()
-                              .set_wq_checks_full_addr()
-                              .prefetch_activate(access_type::LOAD, access_type::PREFETCH)
-                              .prefetcher("no")
-                              .replacement("lru");
+const auto default_dtlb = champsim::modules::ModuleBuilder{}
+                              .add_parameter("sets_factor", 16)
+                              .add_parameter("ways", 4)
+                              .add_parameter("pq_size", 0)
+                              .add_parameter("mshr_size", 8)
+                              .add_parameter("offset_bits", champsim::data::bits{LOG2_PAGE_SIZE})
+                              .add_parameter("reset_prefetch_as_load", false)
+                              .add_parameter("virtual_prefetch", false)
+                              .add_parameter("wq_checks_full_addr", true)
+                              .add_parameter("prefetch_activate", std::vector<access_type>{access_type::LOAD, access_type::PREFETCH})
+                              .add_parameter("prefetcher", "no")
+                              .add_parameter("replacement", "lru");
 
-const auto default_stlb = champsim::cache_builder{}
-                              .sets_factor(64)
-                              .ways(12)
-                              .pq_size(0)
-                              .offset_bits(champsim::data::bits{LOG2_PAGE_SIZE})
-                              .reset_prefetch_as_load()
-                              .reset_virtual_prefetch()
-                              .reset_wq_checks_full_addr()
-                              .prefetch_activate(access_type::LOAD, access_type::PREFETCH)
-                              .prefetcher("no")
-                              .replacement("lru");
+const auto default_stlb = champsim::modules::ModuleBuilder{}
+                              .add_parameter("sets_factor", 64)
+                              .add_parameter("ways", 12)
+                              .add_parameter("pq_size", 0)
+                              .add_parameter("offset_bits", champsim::data::bits{LOG2_PAGE_SIZE})
+                              .add_parameter("reset_prefetch_as_load", false)
+                              .add_parameter("virtual_prefetch", false)
+                              .add_parameter("wq_checks_full_addr", true)
+                              .add_parameter("prefetch_activate", std::vector<access_type>{access_type::LOAD, access_type::PREFETCH})
+                              .add_parameter("prefetcher", "no")
+                              .add_parameter("replacement", "lru");
 
-const auto default_llc = champsim::cache_builder{}
-                             .name("LLC")
-                             .sets_factor(2048)
-                             .ways(16)
-                             .pq_size(32)
-                             .offset_bits(champsim::data::bits{LOG2_BLOCK_SIZE})
-                             .reset_prefetch_as_load()
-                             .reset_virtual_prefetch()
-                             .reset_wq_checks_full_addr()
-                             .prefetch_activate(access_type::LOAD, access_type::PREFETCH)
-                             .prefetcher("no")
-                             .replacement("lru");
+const auto default_llc = champsim::modules::ModuleBuilder{}
+                             .add_parameter("name", "LLC")
+                             .add_parameter("sets_factor", 2048)
+                             .add_parameter("ways", 16)
+                             .add_parameter("pq_size", 32)
+                             .add_parameter("offset_bits", champsim::data::bits{LOG2_BLOCK_SIZE})
+                             .add_parameter("reset_prefetch_as_load", false)
+                             .add_parameter("virtual_prefetch", false)
+                             .add_parameter("wq_checks_full_addr", true)
+                             .add_parameter("prefetch_activate", std::vector<access_type>{access_type::LOAD, access_type::PREFETCH})
+                             .add_parameter("prefetcher", "no")
+                             .add_parameter("replacement", "lru");
 
-const auto default_ptw = champsim::ptw_builder{}.bandwidth_factor(2).mshr_factor(5).add_pscl(5, 1, 2).add_pscl(4, 1, 4).add_pscl(3, 2, 4).add_pscl(2, 4, 8);
+const auto default_ptw = champsim::modules::ModuleBuilder{}
+                              .add_parameter("bandwidth_factor", 2)
+                              .add_parameter("mshr_factor", 5)
+                              .add_parameter("pscl_5", std::vector<int>{1, 2})
+                              .add_parameter("pscl_4", std::vector<int>{1, 4})
+                              .add_parameter("pscl_3", std::vector<int>{2, 4})
+                              .add_parameter("pscl_2", std::vector<int>{4, 8});
 } // namespace champsim::defaults
 
 #endif

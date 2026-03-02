@@ -42,12 +42,12 @@
 #include "champsim.h"
 #include "channel.h"
 #include "chrono.h"
-#include "modules.h"
 #include "operable.h"
+#include "modules.h"
 #include "util/to_underlying.h" // for to_underlying
 #include "waitable.h"
 
-class CACHE : public champsim::operable
+class CACHE : public champsim::modules::cache_module
 {
   enum [[deprecated(
       "Prefetchers may not specify arbitrary fill levels. Use CACHE::prefetch_line(pf_addr, fill_this_level, prefetch_metadata) instead.")]] FILL_LEVEL{
@@ -182,9 +182,16 @@ public:
   void initialize() final;
   void begin_phase() final;
   void end_phase(unsigned cpu) final;
+  void end_simulation() final;
 
   [[deprecated]] std::size_t get_occupancy(uint8_t queue_type, champsim::address address) const;
   [[deprecated]] std::size_t get_size(uint8_t queue_type, champsim::address address) const;
+
+  champsim::bandwidth::maximum_type get_max_tag_bandwidth() const { return MAX_TAG; }
+  stats_type get_sim_stats() const final { return sim_stats; }
+  stats_type get_roi_stats() const final { return roi_stats; }
+
+  bool is_virtual_prefetch() const final { return virtual_prefetch; }
 
   // NOLINTBEGIN
   [[deprecated("get_occupancy() returns 0 for every input except 0 (MSHR). Use get_mshr_occupancy() instead.")]] std::size_t
@@ -208,6 +215,9 @@ public:
   [[nodiscard]] std::vector<std::size_t> get_pq_occupancy() const;
   [[nodiscard]] std::vector<std::size_t> get_pq_size() const;
   [[nodiscard]] std::vector<double> get_pq_occupancy_ratio() const;
+
+  [[nodiscard]] std::size_t num_sets() const { return NUM_SET; }
+  [[nodiscard]] std::size_t num_ways() const { return NUM_WAY; }
 
   [[deprecated("Use get_set_index() instead.")]] [[nodiscard]] uint64_t get_set(uint64_t address) const;
   [[deprecated("This function should not be used to access the blocks directly.")]] [[nodiscard]] uint64_t get_way(uint64_t address, uint64_t set) const;
@@ -241,25 +251,24 @@ public:
     void impl_replacement_final_stats() const;
   // NOLINTEND(readability-make-member-function-const)
 
-  explicit CACHE(champsim::cache_builder b)
-      : champsim::operable(b.m_clock_period), upper_levels(b.m_uls), lower_level(b.m_ll), lower_translate(b.m_lt), NAME(b.m_name), NUM_SET(b.get_num_sets()),
-        NUM_WAY(b.get_num_ways()), MSHR_SIZE(b.get_num_mshrs()), PQ_SIZE(b.m_pq_size), HIT_LATENCY(b.get_hit_latency() * b.m_clock_period),
-        FILL_LATENCY(b.get_fill_latency() * b.m_clock_period), OFFSET_BITS(b.m_offset_bits), MAX_TAG(b.get_tag_bandwidth()), MAX_FILL(b.get_fill_bandwidth()),
-        prefetch_as_load(b.m_pref_load), match_offset_bits(b.m_wq_full_addr), virtual_prefetch(b.m_va_pref), pref_activate_mask(b.m_pref_act_mask)
+  explicit CACHE(champsim::modules::ModuleBuilder builder)
+      : champsim::modules::cache_module(builder.get_parameter<champsim::chrono::picoseconds>("clock_period")), upper_levels(builder.get_parameter<std::vector<champsim::channel*>>("upper_levels")), lower_level(builder.get_parameter<champsim::channel*>("lower_level")), lower_translate(builder.get_parameter<champsim::channel*>("lower_translate")), NAME(builder.get_name()), NUM_SET(builder.get_parameter<uint32_t>("num_sets")), NUM_WAY(builder.get_parameter<uint32_t>("num_ways")), MSHR_SIZE(builder.get_parameter<uint32_t>("mshr_size")), PQ_SIZE(builder.get_parameter<std::size_t>("pq_size")), HIT_LATENCY(builder.get_parameter<uint64_t>("hit_latency") * builder.get_parameter<champsim::chrono::picoseconds>("clock_period")),
+        FILL_LATENCY(builder.get_parameter<uint64_t>("fill_latency") * builder.get_parameter<champsim::chrono::picoseconds>("clock_period")), OFFSET_BITS(builder.get_parameter<champsim::data::bits>("offset_bits")), MAX_TAG(builder.get_parameter<champsim::bandwidth::maximum_type>("max_tag_bandwidth")), MAX_FILL(builder.get_parameter<champsim::bandwidth::maximum_type>("max_fill_bandwidth")),
+        prefetch_as_load(builder.get_parameter<bool>("prefetch_as_load")), match_offset_bits(builder.get_parameter<bool>("match_offset_bits")), virtual_prefetch(builder.get_parameter<bool>("virtual_prefetch")), pref_activate_mask(builder.get_parameter<std::vector<access_type>>("pref_activate_mask"))
   {
-    if(std::size(b.m_pref_modules) == 0) {
+    if(std::size(builder.get_parameter<std::vector<std::string>>("prefetcher_modules")) == 0) {
       fmt::print("[{}] WARNING: No prefetcher modules specified, using no\n",NAME);
-      b.m_pref_modules.push_back("no");
+      builder.get_parameter<std::vector<std::string>>("prefetcher_modules").push_back("no");
     }
-    if(std::size(b.m_repl_modules) == 0) {
+    if(std::size(builder.get_parameter<std::vector<std::string>>("replacement_modules")) == 0) {
       fmt::print("[{}] WARNING: No replacement modules specified, using lru\n",NAME);
-      b.m_repl_modules.push_back("lru");
+      builder.get_parameter<std::vector<std::string>>("replacement_modules").push_back("lru");
     }
-    for(auto s : b.m_pref_modules) {
-      pref_module_pimpl.push_back(champsim::modules::prefetcher::create_instance(s,this,champsim::modules::ModuleBuilder{}));
+    for(auto s : builder.get_parameter<std::vector<std::string>>("prefetcher_modules")) {
+      pref_module_pimpl.push_back(champsim::modules::prefetcher::create_instance(champsim::modules::ModuleBuilder{builder.get_name()+s,s,this}));
     }
-    for(auto s : b.m_repl_modules) {
-      repl_module_pimpl.push_back(champsim::modules::replacement::create_instance(s,this,champsim::modules::ModuleBuilder{}));
+    for(auto s : builder.get_parameter<std::vector<std::string>>("replacement_modules")) {
+      repl_module_pimpl.push_back(champsim::modules::replacement::create_instance(champsim::modules::ModuleBuilder{builder.get_name()+s,s,this}));
     }
   }
 

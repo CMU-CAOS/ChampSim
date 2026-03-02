@@ -32,61 +32,14 @@
 #include "util/bits.h"
 #include "util/span.h"
 
-CACHE::CACHE(CACHE&& other)
-    : operable(other),
-      pref_module_pimpl(std::move(other.pref_module_pimpl)),
-      repl_module_pimpl(std::move(other.repl_module_pimpl)),
-      upper_levels(std::move(other.upper_levels)), lower_level(std::move(other.lower_level)), lower_translate(std::move(other.lower_translate)),
-
-      cpu(other.cpu), NAME(std::move(other.NAME)), NUM_SET(other.NUM_SET), NUM_WAY(other.NUM_WAY), MSHR_SIZE(other.MSHR_SIZE), PQ_SIZE(other.PQ_SIZE),
-      HIT_LATENCY(other.HIT_LATENCY), FILL_LATENCY(other.FILL_LATENCY), OFFSET_BITS(other.OFFSET_BITS), block(std::move(other.block)), MAX_TAG(other.MAX_TAG),
-      MAX_FILL(other.MAX_FILL), prefetch_as_load(other.prefetch_as_load), match_offset_bits(other.match_offset_bits), virtual_prefetch(other.virtual_prefetch),
-      pref_activate_mask(std::move(other.pref_activate_mask)),
-      sim_stats(std::move(other.sim_stats)), roi_stats(std::move(other.roi_stats))
+CACHE::CACHE(CACHE&& other) : champsim::modules::cache_module(other.clock_period)
 {
-  std::for_each(pref_module_pimpl.begin(), pref_module_pimpl.end(), [cache = this](auto pref){pref->bind(cache);});
-  std::for_each(repl_module_pimpl.begin(), repl_module_pimpl.end(), [cache = this](auto repl){repl->bind(cache);});
+  assert(false && "CACHE move constructor called, but this is not expected to be used in a way that requires moving. Please report this to the developers.");
 }
 
 auto CACHE::operator=(CACHE&& other) -> CACHE&
 {
-  this->clock_period = other.clock_period;
-  this->current_time = other.current_time;
-  this->warmup = other.warmup;
-
-  this->upper_levels = std::move(other.upper_levels);
-  this->lower_level = std::move(other.lower_level);
-  this->lower_translate = std::move(other.lower_translate);
-
-  this->cpu = other.cpu;
-  this->NAME = std::move(other.NAME);
-  this->NUM_SET = other.NUM_SET;
-  this->NUM_WAY = other.NUM_WAY;
-  ;
-  this->MSHR_SIZE = other.MSHR_SIZE;
-  ;
-  this->PQ_SIZE = other.PQ_SIZE;
-  this->HIT_LATENCY = other.HIT_LATENCY;
-  this->FILL_LATENCY = other.FILL_LATENCY;
-  this->OFFSET_BITS = other.OFFSET_BITS;
-  ;
-  this->block = std::move(other.block);
-  this->MAX_TAG = other.MAX_TAG;
-  this->MAX_FILL = other.MAX_FILL;
-  this->prefetch_as_load = other.prefetch_as_load;
-  this->match_offset_bits = other.match_offset_bits;
-  this->virtual_prefetch = other.virtual_prefetch;
-  this->pref_activate_mask = std::move(other.pref_activate_mask);
-
-  this->sim_stats = std::move(other.sim_stats);
-  this->roi_stats = std::move(other.roi_stats);
-
-  this->pref_module_pimpl = std::move(other.pref_module_pimpl);
-  this->repl_module_pimpl = std::move(other.repl_module_pimpl);
-
-  std::for_each(pref_module_pimpl.begin(), pref_module_pimpl.end(), [cache = this](const auto pref){pref->bind(cache);});
-  std::for_each(repl_module_pimpl.begin(), repl_module_pimpl.end(), [cache = this](const auto repl){repl->bind(cache);});
-
+  assert(false && "CACHE move assignment operator called, but this is not expected to be used in a way that requires moving. Please report this to the developers.");
   return *this;
 }
 
@@ -897,6 +850,8 @@ void CACHE::end_phase(unsigned finished_cpu)
   }
 }
 
+void CACHE::end_simulation() { impl_prefetcher_final_stats(); impl_replacement_final_stats(); }
+
 template <typename T>
 bool CACHE::should_activate_prefetcher(const T& pkt) const
 {
@@ -934,3 +889,5 @@ void CACHE::print_deadlock()
   }
 }
 // LCOV_EXCL_STOP
+
+champsim::modules::cache_module::register_module<CACHE> default_cache_module("CACHE");

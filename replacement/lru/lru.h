@@ -13,8 +13,8 @@ class lru : public champsim::modules::replacement
   uint64_t cycle = 0;
 
 public:
-  explicit lru(std::string name, CACHE* cache, champsim::modules::ModuleBuilder builder);
-  lru(CACHE* cache, long sets, long ways);
+  explicit lru(champsim::modules::ModuleBuilder builder);
+  lru(champsim::modules::cache_module* cache, long sets, long ways);
 
   // void initialize_replacement();
   long find_victim(uint32_t triggering_cpu, uint64_t instr_id, long set, const champsim::cache_block* current_set, champsim::address ip,

@@ -6,8 +6,9 @@
 #include <type_traits>
 #include <utility>
 
-#include "channel.h"
+#include "champsim.h"
 #include "event_counter.h"
+#include "access_type.h"
 
 struct cache_stats {
   std::string name;

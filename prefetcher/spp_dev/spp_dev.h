@@ -175,7 +175,7 @@ struct spp_dev : public champsim::modules::prefetcher {
   PREFETCH_FILTER FILTER;
   GLOBAL_REGISTER GHR;
 
-  spp_dev(std::string name, CACHE* cache, champsim::modules::ModuleBuilder builder) {};
+  spp_dev(champsim::modules::ModuleBuilder builder) {};
 };
 
 #endif

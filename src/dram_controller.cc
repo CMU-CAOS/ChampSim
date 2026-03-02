@@ -27,16 +27,18 @@
 #include "util/span.h"
 #include "util/units.h"
 
-MEMORY_CONTROLLER::MEMORY_CONTROLLER(champsim::chrono::picoseconds dbus_period, champsim::chrono::picoseconds mc_period, std::size_t t_rp, std::size_t t_rcd,
-                                     std::size_t t_cas, std::size_t t_ras, champsim::chrono::microseconds refresh_period, std::vector<channel_type*>&& ul,
-                                     std::size_t rq_size, std::size_t wq_size, std::size_t chans, champsim::data::bytes chan_width, std::size_t rows,
-                                     std::size_t columns, std::size_t ranks, std::size_t bankgroups, std::size_t banks, std::size_t refreshes_per_period)
-    : champsim::operable(mc_period), queues(std::move(ul)), channel_width(chan_width),
-      address_mapping(chan_width, BLOCK_SIZE / chan_width.count(), chans, bankgroups, banks, columns, ranks, rows), data_bus_period(dbus_period)
+MEMORY_CONTROLLER::MEMORY_CONTROLLER(champsim::modules::ModuleBuilder builder)
+    : champsim::modules::memory_controller_module(builder.get_parameter<champsim::chrono::picoseconds>("mc_period")), queues(std::move(builder.get_parameter<std::vector<channel_type*>>("channels"))),
+      channel_width(builder.get_parameter<champsim::data::bytes>("channel_width")),
+      address_mapping(channel_width, BLOCK_SIZE / channel_width.count(), builder.get_parameter<std::size_t>("channels"), builder.get_parameter<std::size_t>("bankgroups"),
+                      builder.get_parameter<std::size_t>("banks"), builder.get_parameter<std::size_t>("columns"), builder.get_parameter<std::size_t>("ranks"),
+                      builder.get_parameter<std::size_t>("rows")), data_bus_period(builder.get_parameter<champsim::chrono::picoseconds>("dbus_period"))
 {
-  for (std::size_t i{0}; i < chans; ++i) {
-    channels.emplace_back(dbus_period, mc_period, t_rp, t_rcd, t_cas, t_ras, refresh_period, refreshes_per_period, chan_width, rq_size, wq_size,
-                          address_mapping);
+  for (std::size_t i{0}; i < channels.size(); ++i) {
+    channels.emplace_back(data_bus_period, builder.get_parameter<champsim::chrono::picoseconds>("mc_period"), builder.get_parameter<std::size_t>("t_rp"), builder.get_parameter<std::size_t>("t_rcd"),
+                          builder.get_parameter<std::size_t>("t_cas"), builder.get_parameter<std::size_t>("t_ras"),
+                          builder.get_parameter<champsim::chrono::microseconds>("refresh_period"), builder.get_parameter<std::size_t>("refreshes_per_period"),
+                          channel_width, builder.get_parameter<std::size_t>("rq_size"), builder.get_parameter<std::size_t>("wq_size"), address_mapping);
   }
 }
 
@@ -633,3 +635,23 @@ void DRAM_CHANNEL::print_deadlock()
   champsim::range_print_deadlock(WQ, "WQ", q_writer, q_entry_pack);
 }
 // LCOV_EXCL_STOP
+
+champsim::modules::memory_controller_module::stats_type MEMORY_CONTROLLER::get_sim_stats(std::size_t channel_no) const
+{
+  if (channel_no < std::size(channels)) {
+    return channels[channel_no].sim_stats;
+  } else {
+    throw std::out_of_range("Channel number out of range");
+  }
+}
+
+champsim::modules::memory_controller_module::stats_type MEMORY_CONTROLLER::get_roi_stats(std::size_t channel_no) const
+{
+  if (channel_no < std::size(channels)) {
+    return channels[channel_no].roi_stats;
+  } else {
+    throw std::out_of_range("Channel number out of range");
+  }
+}
+
+champsim::modules::memory_controller_module::register_module<MEMORY_CONTROLLER> register_memory_controller_module("MEMORY_CONTROLLER");

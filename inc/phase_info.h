@@ -22,10 +22,8 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include "modules.h"
 
-#include "cache_stats.h"
-#include "core_stats.h"
-#include "dram_stats.h"
 
 namespace champsim
 {
@@ -41,9 +39,9 @@ struct phase_info {
 struct phase_stats {
   std::string name;
   std::vector<std::string> trace_names;
-  std::vector<O3_CPU::stats_type> roi_cpu_stats, sim_cpu_stats;
-  std::vector<CACHE::stats_type> roi_cache_stats, sim_cache_stats;
-  std::vector<DRAM_CHANNEL::stats_type> roi_dram_stats, sim_dram_stats;
+  std::vector<champsim::modules::core_module::stats_type> roi_cpu_stats, sim_cpu_stats;
+  std::vector<champsim::modules::cache_module::stats_type> roi_cache_stats, sim_cache_stats;
+  std::vector<champsim::modules::memory_controller_module::stats_type> roi_dram_stats, sim_dram_stats;
 };
 
 } // namespace champsim

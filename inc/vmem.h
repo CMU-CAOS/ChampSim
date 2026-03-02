@@ -26,12 +26,13 @@
 #include "address.h"
 #include "champsim.h"
 #include "chrono.h"
+#include "modules.h"
 
 class MEMORY_CONTROLLER;
 
 using pte_entry = champsim::data::size<long long, std::ratio<8>>;
 
-class VirtualMemory
+class VirtualMemory: public champsim::modules::vmem_module
 {
 private:
   std::map<std::pair<uint32_t, champsim::page_number>, champsim::page_number> vpage_to_ppage_map;
@@ -70,10 +71,7 @@ public:
    *   This is currently only used to issue a warning if the physical memory is smaller than the virtual memory.
    *   Future versions may perform major page faults through this reference.
    */
-  VirtualMemory(champsim::data::bytes page_table_page_size, std::size_t page_table_levels, champsim::chrono::clock::duration minor_penalty,
-                MEMORY_CONTROLLER& dram_);
-  VirtualMemory(champsim::data::bytes page_table_page_size, std::size_t page_table_levels, champsim::chrono::clock::duration minor_penalty,
-                MEMORY_CONTROLLER& dram_, std::optional<uint64_t> randomization_seed_);
+  VirtualMemory(champsim::modules::ModuleBuilder builder);
 
   /**
    * Find the bit location of the lowest bit for the given page table level.

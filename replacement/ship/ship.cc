@@ -8,8 +8,8 @@
 champsim::modules::replacement::register_module<ship> ship_register("ship");
 
 // initialize replacement state
-ship::ship(std::string name, CACHE* cache, champsim::modules::ModuleBuilder builder)
-    : NUM_SET(cache->NUM_SET), NUM_WAY(cache->NUM_WAY),
+ship::ship(champsim::modules::ModuleBuilder builder)
+    : NUM_SET(builder.get_parent<champsim::modules::cache_module>()->num_sets()), NUM_WAY(builder.get_parent<champsim::modules::cache_module>()->num_ways()),
       sampler(champsim::msl::get_num_samples(NUM_SET) * NUM_CPUS * static_cast<std::size_t>(NUM_WAY)),
       rrpv_values(static_cast<std::size_t>(NUM_SET * NUM_WAY), maxRRPV), set_categorizer(champsim::msl::get_sample_rate(NUM_SET))
 {

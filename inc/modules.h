@@ -28,16 +28,28 @@
 #include "address.h"
 #include "block.h"
 #include "champsim.h"
+#include "instruction.h"
+#include "operable.h"
+#include "packet.h"
+#include "cache_stats.h"
+#include "core_stats.h"
+#include "dram_stats.h"
+#include "bandwidth.h"
 #include <any>
 
-class CACHE;
-class O3_CPU;
+//class CACHE;
+//class O3_CPU;
+namespace champsim {
+  class environment;
+};
 namespace champsim::modules {
-
 
 struct ModuleBuilder {
   private:
   std::map<std::string,std::any> parameters;
+  std::string model = "";
+  std::string name = "";
+  std::any parent = nullptr;
 
   public:
   template<typename T>
@@ -67,6 +79,23 @@ struct ModuleBuilder {
     parameters[name] = value;
     return *this;
   }
+
+  std::string get_model() const { return model; }
+  std::string get_name() const { return name; }
+
+  template<typename T>
+  T* get_parent() const { return std::any_cast<T*>(parent); }
+
+  bool is_valid() const {return model != "" && name != "" && std::any_cast<void*>(parent) != nullptr;}
+
+  ModuleBuilder() {}
+  ModuleBuilder(std::string name_, std::string model_, std::any parent_, ModuleBuilder defaults = ModuleBuilder{}) : name(name_), model(model_), parent(parent_) {
+    if(!defaults.parameters.empty()) {
+      for(auto& [param_name, param_value] : defaults.parameters) {
+        parameters[param_name] = param_value;
+      }
+    }
+  }
 };
 
 //Module base, defining the base type B for the module and component type C that it is used by
@@ -74,13 +103,13 @@ template<typename B, typename C>
 struct module_base {
     std::string NAME;
     C* intern_;
-    using function_type = typename std::function<std::unique_ptr<B>(std::string name, C* intern_, ModuleBuilder builder)>;
+    using function_type = typename std::function<std::unique_ptr<B>(ModuleBuilder builder)>;
 
     private:
     static std::map<std::string,std::any> module_map;
     static std::map<std::string,std::vector<std::unique_ptr<B>>> instance_map;
 
-    static void add_module(std::string name, std::function<std::unique_ptr<B>(std::string name, C* intern_, ModuleBuilder builder)> module_constructor) {
+    static void add_module(std::string name, std::function<std::unique_ptr<B>(ModuleBuilder builder)> module_constructor) {
         if(module_map.find(name) != module_map.end()) {
             fmt::print("[MODULE] ERROR: duplicate module name used: {}\n", name);
             exit(-1);
@@ -94,21 +123,39 @@ struct module_base {
     void bind(C* bind_arg) {intern_ = bind_arg;};
 
     //create an instance of the module, which will be stored in this base-module-type's static list
-    template<typename T>
-    static B* create_instance(std::string name, T* bind_arg, ModuleBuilder builder = ModuleBuilder{}) {
-        if(module_map.find(name) == module_map.end()) {
-            fmt::print("[MODULE] ERROR: specified module {} does not exist\n",name);
+    static B* create_instance(ModuleBuilder builder) {
+        if(!builder.is_valid()) {
+            fmt::print("[MODULE] ERROR: invalid module builder used for module {}\n",builder.get_name());
+            exit(-1);
+        }
+        if(module_map.find(builder.get_model()) == module_map.end()) {
+            fmt::print("[MODULE] ERROR: specified module {} does not exist\n",builder.get_model());
             exit(-1);
         }
         try {
-          B* instance_ptr = instance_map[name].emplace_back(std::any_cast<std::function<std::unique_ptr<B>(std::string name, C* intern_, ModuleBuilder builder)>>(module_map[name])(name, bind_arg, builder)).get();
+          B* instance_ptr = instance_map[builder.get_name()].emplace_back(std::any_cast<std::function<std::unique_ptr<B>(ModuleBuilder builder)>>(module_map[builder.get_model()])(builder)).get();
           //It seems sketchy for the module wrapper to be tracking these separately from the module itself, can we fix this?
-          instance_ptr->NAME = name;
-          instance_ptr->bind(bind_arg);
+          instance_ptr->NAME =  builder.get_name();
+          instance_ptr->bind(builder.get_parent<C>());
           return(instance_ptr);
         }
         catch(const std::bad_any_cast& caught) {
-          fmt::print("[MODULE] ERROR: Casting failed while constructing {}, are your registration and instance calls consistent?\n",name);
+          fmt::print("[MODULE] ERROR: Casting failed while constructing {}, are your registration and instance calls consistent?\n",builder.get_name());
+          exit(-1);
+        }
+    }
+
+    template<typename T>
+    static T* get_instance(std::string name) {
+        if(instance_map.find(name) == instance_map.end() || instance_map[name].empty()) {
+            fmt::print("[MODULE] ERROR: no instances found for module {}\n",name);
+            exit(-1);
+        }
+        try {
+          return std::any_cast<T*>(instance_map[name].front().get());
+        }
+        catch(const std::bad_any_cast& caught) {
+          fmt::print("[MODULE] ERROR: Casting failed while retrieving {}, is your instance type correct?\n",name);
           exit(-1);
         }
     }
@@ -117,16 +164,104 @@ struct module_base {
     //this is necessary to be able to create instances
     template<typename D> 
     struct register_module {
-      register_module(std::string module_name) {
+      register_module(std::string model_name) {
           
-          std::function<std::unique_ptr<B>(std::string name, C* intern_, ModuleBuilder builder)> create_module([](std::string name, C* intern_, ModuleBuilder builder){return std::unique_ptr<B>(new D(name, intern_, builder));});
-          add_module(module_name,create_module);
+          std::function<std::unique_ptr<B>(ModuleBuilder builder)> create_module([](ModuleBuilder builder){return std::unique_ptr<B>(new D(builder));});
+          add_module(model_name,create_module);
       }
     };
 
 };
 
-  struct prefetcher: public module_base<prefetcher,CACHE> {
+  struct core_module: public module_base<core_module,environment>, public operable {
+    //interface for core module
+    virtual void push_instruction(ooo_model_instr instr) = 0;
+    virtual std::size_t instructions_requested() = 0;
+    virtual uint64_t sim_instr() const = 0;
+    virtual uint8_t get_cpu_num() const = 0;
+    virtual uint64_t sim_cycle() const = 0;
+
+    core_module(champsim::chrono::picoseconds clock_period) : operable(clock_period) {}
+
+    using stats_type = cpu_stats;
+    virtual stats_type get_sim_stats() const = 0;
+    virtual stats_type get_roi_stats() const = 0;
+
+    virtual void quiet(bool enable) = 0;
+  };
+
+  struct cache_module: public module_base<cache_module,environment>, public operable {
+    //interface for cache module
+    cache_module(champsim::chrono::picoseconds clock_period) : operable(clock_period) {}
+
+    using stats_type = cache_stats;
+    virtual champsim::bandwidth::maximum_type get_max_tag_bandwidth() const = 0;
+    virtual stats_type get_sim_stats() const = 0;
+    virtual stats_type get_roi_stats() const = 0;
+
+    virtual bool is_virtual_prefetch() const = 0;
+    virtual bool prefetch_line(champsim::address pf_addr, bool fill_this_level, uint32_t prefetch_metadata) = 0;
+    virtual void impl_update_replacement_state(uint32_t triggering_cpu, long set, long way, champsim::address full_addr, champsim::address ip,
+                                       champsim::address victim_addr, access_type type, bool hit) const = 0;
+
+    virtual long invalidate_entry(champsim::address inval_addr) = 0;
+    virtual std::size_t get_mshr_occupancy() const = 0;
+    virtual std::size_t get_mshr_size() const = 0;
+    virtual double get_mshr_occupancy_ratio() const = 0;
+
+    virtual std::vector<std::size_t> get_rq_occupancy() const = 0;
+    virtual std::vector<std::size_t> get_rq_size() const = 0;
+    virtual std::vector<double> get_rq_occupancy_ratio() const = 0;
+
+    virtual std::vector<std::size_t> get_wq_occupancy() const = 0;
+    virtual std::vector<std::size_t> get_wq_size() const = 0;
+    virtual std::vector<double> get_wq_occupancy_ratio() const = 0;
+
+    virtual std::vector<std::size_t> get_pq_occupancy() const = 0;
+    virtual std::vector<std::size_t> get_pq_size() const = 0;
+    virtual std::vector<double> get_pq_occupancy_ratio() const = 0;
+
+    virtual std::size_t num_sets() const = 0;
+    virtual std::size_t num_ways() const = 0;
+  };
+
+  struct memory_controller_module: public module_base<memory_controller_module,environment>, public operable {
+    //interface for memory controller module
+    memory_controller_module(champsim::chrono::picoseconds clock_period) : operable(clock_period) {}
+
+    using stats_type = dram_stats;
+    virtual std::size_t get_num_channels() const = 0;
+    virtual stats_type get_sim_stats(std::size_t channel_no) const = 0;
+    virtual stats_type get_roi_stats(std::size_t channel_no) const = 0;
+  }; 
+
+  struct page_table_walker_module: public module_base<page_table_walker_module,environment>, public operable {
+    //interface for page table walker module
+    page_table_walker_module(champsim::chrono::picoseconds clock_period) : operable(clock_period) {}
+  }; 
+
+  struct channel_module: public module_base<channel_module,environment> {
+    //interface for channel module
+    virtual bool add_rq(const request& packet) = 0;
+    virtual bool add_wq(const request& packet) = 0;
+    virtual bool add_pq(const request& packet) = 0;
+
+    virtual std::size_t rq_occupancy() const = 0;
+    virtual std::size_t wq_occupancy() const = 0;
+    virtual std::size_t pq_occupancy() const = 0;
+
+    virtual std::size_t rq_size() const = 0;
+    virtual std::size_t wq_size() const = 0;
+    virtual std::size_t pq_size() const = 0;
+  }; 
+
+  struct vmem_module: public module_base<vmem_module,environment> {
+    virtual std::size_t available_ppages() const = 0;
+    virtual std::pair<champsim::page_number, champsim::chrono::clock::duration> va_to_pa(uint32_t cpu_num, champsim::page_number vaddr) = 0;
+    virtual std::pair<champsim::address, champsim::chrono::clock::duration> get_pte_pa(uint32_t cpu_num, champsim::page_number vaddr, std::size_t level) = 0;
+  };
+
+  struct prefetcher: public module_base<prefetcher,cache_module> {
 
       //prefetcher initialize
       virtual void prefetcher_initialize() {}
@@ -176,7 +311,7 @@ struct module_base {
   };
 
 
-  struct replacement: public module_base<replacement,CACHE> {
+  struct replacement: public module_base<replacement,cache_module> {
 
       //initialize replacement
       virtual void initialize_replacement() {}
@@ -228,7 +363,7 @@ struct module_base {
 
   };
 
-  struct branch_predictor: public module_base<branch_predictor,O3_CPU> {
+  struct branch_predictor: public module_base<branch_predictor,core_module> {
 
     //initialize branch predictor
     virtual void initialize_branch_predictor() {}
@@ -253,7 +388,7 @@ struct module_base {
 
   };
 
-  struct btb: public module_base<btb,O3_CPU> {
+  struct btb: public module_base<btb,core_module> {
 
     //initialize btb
     virtual void initialize_btb() {}

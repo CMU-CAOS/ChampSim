@@ -18,16 +18,16 @@ from . import util
 
 def cache_core_defaults(cpu):
     ''' Generate the lower levels that a default core would expect for each of its caches '''
-    yield { 'name': cpu.get('L1I'), 'lower_level': cpu.get('L2C') }
-    yield { 'name': cpu.get('L1D'), 'lower_level': cpu.get('L2C') }
-    yield { 'name': cpu.get('ITLB'), 'lower_level': cpu.get('STLB') }
-    yield { 'name': cpu.get('DTLB'), 'lower_level': cpu.get('STLB') }
-    yield { 'name': cpu.get('L2C'), 'lower_level': 'LLC' }
-    yield { 'name': cpu.get('STLB'), 'lower_level': cpu.get('PTW') }
+    yield { 'model': "CACHE", 'name': cpu.get('L1I'), 'lower_level': cpu.get('L2C') }
+    yield { 'model': "CACHE", 'name': cpu.get('L1D'), 'lower_level': cpu.get('L2C') }
+    yield { 'model': "CACHE", 'name': cpu.get('ITLB'), 'lower_level': cpu.get('STLB') }
+    yield { 'model': "CACHE", 'name': cpu.get('DTLB'), 'lower_level': cpu.get('STLB') }
+    yield { 'model': "CACHE", 'name': cpu.get('L2C'), 'lower_level': 'LLC' }
+    yield { 'model': "CACHE", 'name': cpu.get('STLB'), 'lower_level': cpu.get('PTW') }
 
 def ptw_core_defaults(cpu):
     ''' Generate the lower levels that a default core would expect for each of its PTWs '''
-    yield { 'name': cpu.get('PTW'), 'lower_level': cpu.get('L1D') }
+    yield { 'model': 'PTW','name': cpu.get('PTW'), 'lower_level': cpu.get('L1D') }
 
 def list_defaults_for_core(cpu, caches):
     ''' Generate the down-path defaults that a default core would expect '''
@@ -35,6 +35,9 @@ def list_defaults_for_core(cpu, caches):
     dcache_path = itertools.tee(util.iter_system(caches, cpu.get('L1D')), 2)
     itlb_path = itertools.tee(util.iter_system(caches, cpu.get('ITLB')), 2)
     dtlb_path = itertools.tee(util.iter_system(caches, cpu.get('DTLB')), 2)
+    
+    #default core model is O3_CPU
+    
 
     l1i_members = (
         { '_first_level': True, '_is_instruction_cache': True,

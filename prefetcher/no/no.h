@@ -19,7 +19,7 @@ public:
   // void prefetcher_cycle_operate() {}
   // void prefetcher_final_stats() {}
 
-  no(std::string name, CACHE* cache, champsim::modules::ModuleBuilder builder) {};
+  no(champsim::modules::ModuleBuilder builder) {};
 };
 
 #endif

@@ -26,7 +26,7 @@ public:
   std::vector<unsigned> rrpv;
   std::vector<champsim::msl::dscounter<long, PSEL_WIDTH>> PSEL;
 
-  drrip(std::string name, CACHE* cache, champsim::modules::ModuleBuilder builder);
+  drrip(champsim::modules::ModuleBuilder builder);
 
   // void initialize_replacement()
   long find_victim(uint32_t triggering_cpu, uint64_t instr_id, long set, const champsim::cache_block* current_set, champsim::address ip,

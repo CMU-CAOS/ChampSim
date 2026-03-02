@@ -20,19 +20,15 @@
 #include <functional>
 #include <vector>
 
-#include "cache.h"
-#include "dram_controller.h"
-#include "ooo_cpu.h"
-#include "operable.h"
-#include "ptw.h"
+#include "modules.h"
 
 namespace champsim
 {
 struct environment {
-  virtual std::vector<std::reference_wrapper<O3_CPU>> cpu_view() = 0;
-  virtual std::vector<std::reference_wrapper<CACHE>> cache_view() = 0;
-  virtual std::vector<std::reference_wrapper<PageTableWalker>> ptw_view() = 0;
-  virtual MEMORY_CONTROLLER& dram_view() = 0;
+  virtual std::vector<std::reference_wrapper<champsim::modules::core_module>> cpu_view() = 0;
+  virtual std::vector<std::reference_wrapper<champsim::modules::cache_module>> cache_view() = 0;
+  virtual std::vector<std::reference_wrapper<champsim::modules::page_table_walker_module>> ptw_view() = 0;
+  virtual champsim::modules::memory_controller_module& dram_view() = 0;
   virtual std::vector<std::reference_wrapper<operable>> operable_view() = 0;
 };
 
@@ -41,12 +37,18 @@ namespace configured
 template <unsigned long long ID>
 struct generated_environment;
 
-template <typename R, typename... PTWs>
-auto build(PTWs... builders)
+template <typename R>
+auto build(champsim::modules::ModuleBuilder builder)
 {
-  std::vector<R> retval{};
+  return modules::module_base<R,champsim::environment>::create_instance(builder);
+}
+
+template <typename R, typename... ModuleBuilders>
+auto build_many(ModuleBuilders... builders)
+{
+  std::vector<R*> retval{};
   retval.reserve(sizeof...(builders));
-  (..., retval.emplace_back(builders));
+  (..., retval.push_back(modules::module_base<R,champsim::environment>::create_instance(builders)));
   return retval;
 }
 } // namespace configured

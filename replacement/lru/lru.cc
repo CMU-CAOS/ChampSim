@@ -5,9 +5,9 @@
 
 champsim::modules::replacement::register_module<lru> lru_register("lru");
 
-lru::lru(std::string name, CACHE* cache, champsim::modules::ModuleBuilder builder) : lru(cache, cache->NUM_SET, cache->NUM_WAY) {}
+lru::lru(champsim::modules::ModuleBuilder builder) : lru(builder.get_parent<champsim::modules::cache_module>(), builder.get_parent<champsim::modules::cache_module>()->num_sets(), builder.get_parent<champsim::modules::cache_module>()->num_ways()) {}
 
-lru::lru(CACHE* cache, long sets, long ways) : NUM_WAY(ways), last_used_cycles(static_cast<std::size_t>(sets * ways), 0) {}
+lru::lru(champsim::modules::cache_module* cache, long sets, long ways) : NUM_WAY(ways), last_used_cycles(static_cast<std::size_t>(sets * ways), 0) {}
 
 long lru::find_victim(uint32_t triggering_cpu, uint64_t instr_id, long set, const champsim::cache_block* current_set, champsim::address ip,
                       champsim::address full_addr, access_type type)

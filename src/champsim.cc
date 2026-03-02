@@ -51,10 +51,10 @@ long do_cycle(environment& env, std::vector<tracereader>& traces, std::vector<st
   }
 
   // Read from trace
-  for (O3_CPU& cpu : env.cpu_view()) {
-    auto& trace = traces.at(trace_index.at(cpu.cpu));
-    for (auto pkt_count = cpu.IN_QUEUE_SIZE - static_cast<long>(std::size(cpu.input_queue)); !trace.eof() && pkt_count > 0; --pkt_count) {
-      cpu.input_queue.push_back(trace());
+  for (champsim::modules::core_module& cpu : env.cpu_view()) {
+    auto& trace = traces.at(trace_index.at(cpu.get_cpu_num()));
+    for (auto pkt_count = cpu.instructions_requested(); !trace.eof() && pkt_count > 0; --pkt_count) {
+      cpu.push_instruction(trace());
     }
   }
 
@@ -101,23 +101,23 @@ phase_stats do_phase(const phase_info& phase, environment& env, std::vector<trac
     livelock_timer++;
     if (livelock_timer >= livelock_period) {
       // for each cpu
-      for (O3_CPU& cpu : env.cpu_view()) {
+      for (champsim::modules::core_module& cpu : env.cpu_view()) {
         // for each threshold
         for (auto thres = std::begin(livelock_threshold); thres != std::end(livelock_threshold); thres++) {
-          double livelock_ipc = std::ceil(cpu.sim_instr() - livelock_instr[cpu.cpu]) / std::ceil(livelock_period);
+          double livelock_ipc = std::ceil(cpu.sim_instr() - livelock_instr[cpu.get_cpu_num()]) / std::ceil(livelock_period);
           if (livelock_ipc <= *thres) {
             if (std::distance(std::begin(livelock_threshold), thres) == 0) {
               livelock_trigger = true;
-              fmt::print("{} CPU {} panic: IPC {:.5g} < {:.5g}\n", phase_name, cpu.cpu, livelock_ipc, *thres);
+              fmt::print("{} CPU {} panic: IPC {:.5g} < {:.5g}\n", phase_name, cpu.get_cpu_num(), livelock_ipc, *thres);
             } else if (std::distance(std::begin(livelock_threshold), thres) == 1)
-              fmt::print("{} CPU {} critical: IPC {:.5g} < {:.5g}\n", phase_name, cpu.cpu, livelock_ipc, *thres);
+              fmt::print("{} CPU {} critical: IPC {:.5g} < {:.5g}\n", phase_name, cpu.get_cpu_num(), livelock_ipc, *thres);
             else
-              fmt::print("{} CPU {} warning: IPC {:.5g} < {:.5g}\n", phase_name, cpu.cpu, livelock_ipc, *thres);
+              fmt::print("{} CPU {} warning: IPC {:.5g} < {:.5g}\n", phase_name, cpu.get_cpu_num(), livelock_ipc, *thres);
 
             break;
           }
         }
-        livelock_instr[cpu.cpu] = cpu.sim_instr();
+        livelock_instr[cpu.get_cpu_num()] = cpu.sim_instr();
       }
       livelock_timer = 0;
     }
@@ -133,18 +133,18 @@ phase_stats do_phase(const phase_info& phase, environment& env, std::vector<trac
     }
 
     // Check for phase finish
-    for (O3_CPU& cpu : env.cpu_view()) {
+    for (champsim::modules::core_module& cpu : env.cpu_view()) {
       // Phase complete
-      next_phase_complete[cpu.cpu] = next_phase_complete[cpu.cpu] || (cpu.sim_instr() >= length);
+      next_phase_complete[cpu.get_cpu_num()] = next_phase_complete[cpu.get_cpu_num()] || (cpu.sim_instr() >= length);
     }
 
-    for (O3_CPU& cpu : env.cpu_view()) {
-      if (next_phase_complete[cpu.cpu] != phase_complete[cpu.cpu]) {
+    for (champsim::modules::core_module& cpu : env.cpu_view()) {
+      if (next_phase_complete[cpu.get_cpu_num()] != phase_complete[cpu.get_cpu_num()]) {
         for (champsim::operable& op : operables) {
-          op.end_phase(cpu.cpu);
+          op.end_phase(cpu.get_cpu_num());
         }
 
-        fmt::print("{} finished CPU {} instructions: {} cycles: {} cumulative IPC: {:.4g} (Simulation time: {:%H hr %M min %S sec})\n", phase_name, cpu.cpu,
+        fmt::print("{} finished CPU {} instructions: {} cycles: {} cumulative IPC: {:.4g} (Simulation time: {:%H hr %M min %S sec})\n", phase_name, cpu.get_cpu_num(),
                    cpu.sim_instr(), cpu.sim_cycle(), std::ceil(cpu.sim_instr()) / std::ceil(cpu.sim_cycle()), elapsed_time());
       }
     }
@@ -152,8 +152,8 @@ phase_stats do_phase(const phase_info& phase, environment& env, std::vector<trac
     phase_complete = next_phase_complete;
   }
 
-  for (O3_CPU& cpu : env.cpu_view()) {
-    fmt::print("{} complete CPU {} instructions: {} cycles: {} cumulative IPC: {:.4g} (Simulation time: {:%H hr %M min %S sec})\n", phase_name, cpu.cpu,
+  for (champsim::modules::core_module& cpu : env.cpu_view()) {
+    fmt::print("{} complete CPU {} instructions: {} cycles: {} cumulative IPC: {:.4g} (Simulation time: {:%H hr %M min %S sec})\n", phase_name, cpu.get_cpu_num(),
                cpu.sim_instr(), cpu.sim_cycle(), std::ceil(cpu.sim_instr()) / std::ceil(cpu.sim_cycle()), elapsed_time());
   }
 
@@ -165,18 +165,18 @@ phase_stats do_phase(const phase_info& phase, environment& env, std::vector<trac
   }
 
   auto cpus = env.cpu_view();
-  std::transform(std::begin(cpus), std::end(cpus), std::back_inserter(stats.sim_cpu_stats), [](const O3_CPU& cpu) { return cpu.sim_stats; });
-  std::transform(std::begin(cpus), std::end(cpus), std::back_inserter(stats.roi_cpu_stats), [](const O3_CPU& cpu) { return cpu.roi_stats; });
+  std::transform(std::begin(cpus), std::end(cpus), std::back_inserter(stats.sim_cpu_stats), [](const champsim::modules::core_module& cpu) { return cpu.get_sim_stats(); });
+  std::transform(std::begin(cpus), std::end(cpus), std::back_inserter(stats.roi_cpu_stats), [](const champsim::modules::core_module& cpu) { return cpu.get_roi_stats(); });
 
   auto caches = env.cache_view();
-  std::transform(std::begin(caches), std::end(caches), std::back_inserter(stats.sim_cache_stats), [](const CACHE& cache) { return cache.sim_stats; });
-  std::transform(std::begin(caches), std::end(caches), std::back_inserter(stats.roi_cache_stats), [](const CACHE& cache) { return cache.roi_stats; });
+  std::transform(std::begin(caches), std::end(caches), std::back_inserter(stats.sim_cache_stats), [](const champsim::modules::cache_module& cache) { return cache.get_sim_stats(); });
+  std::transform(std::begin(caches), std::end(caches), std::back_inserter(stats.roi_cache_stats), [](const champsim::modules::cache_module& cache) { return cache.get_roi_stats(); });
 
-  auto dram = env.dram_view();
-  std::transform(std::begin(dram.channels), std::end(dram.channels), std::back_inserter(stats.sim_dram_stats),
-                 [](const DRAM_CHANNEL& chan) { return chan.sim_stats; });
-  std::transform(std::begin(dram.channels), std::end(dram.channels), std::back_inserter(stats.roi_dram_stats),
-                 [](const DRAM_CHANNEL& chan) { return chan.roi_stats; });
+  champsim::modules::memory_controller_module& dram = env.dram_view();
+  for(auto chan_no = 0; chan_no < dram.get_num_channels(); ++chan_no) {
+    stats.sim_dram_stats.push_back(dram.get_sim_stats(chan_no));
+    stats.roi_dram_stats.push_back(dram.get_roi_stats(chan_no));
+  }
 
   return stats;
 }

@@ -186,7 +186,7 @@ struct DRAM_CHANNEL final : public champsim::operable {
   [[nodiscard]] champsim::data::bytes density() const;
 };
 
-class MEMORY_CONTROLLER : public champsim::operable
+class MEMORY_CONTROLLER : public champsim::modules::memory_controller_module
 {
   using channel_type = champsim::channel;
   using request_type = typename channel_type::request_type;
@@ -206,16 +206,17 @@ class MEMORY_CONTROLLER : public champsim::operable
 public:
   std::vector<DRAM_CHANNEL> channels;
 
-  MEMORY_CONTROLLER(champsim::chrono::picoseconds dbus_period, champsim::chrono::picoseconds mc_period, std::size_t t_rp, std::size_t t_rcd, std::size_t t_cas,
-                    std::size_t t_ras, champsim::chrono::microseconds refresh_period, std::vector<channel_type*>&& ul, std::size_t rq_size, std::size_t wq_size,
-                    std::size_t chans, champsim::data::bytes chan_width, std::size_t rows, std::size_t columns, std::size_t ranks, std::size_t bankgroups,
-                    std::size_t banks, std::size_t refreshes_per_period);
+  MEMORY_CONTROLLER(champsim::modules::ModuleBuilder builder);
 
   void initialize() final;
   long operate() final;
   void begin_phase() final;
   void end_phase(unsigned cpu) final;
   void print_deadlock() final;
+
+  stats_type get_sim_stats(std::size_t channel_no) const final;
+  stats_type get_roi_stats(std::size_t channel_no) const final;
+  std::size_t get_num_channels() const final { return channels.size(); }
 
   [[nodiscard]] champsim::data::bytes size() const;
 };
