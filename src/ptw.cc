@@ -34,7 +34,7 @@ PageTableWalker::PageTableWalker(champsim::modules::ModuleBuilder builder)
       MSHR_SIZE(builder.get_parameter<uint32_t>("mshr_size")),
       MAX_READ(builder.get_parameter<champsim::bandwidth::maximum_type>("max_tag_check")),
       MAX_FILL(builder.get_parameter<champsim::bandwidth::maximum_type>("max_fill")),
-      HIT_LATENCY(builder.get_parameter<unsigned>("latency")), vmem(builder.get_parameter<VirtualMemory*>("vmem")), CR3_addr(vmem->get_pte_pa(builder.get_parameter<uint32_t>("cpu"), champsim::page_number{}, vmem->pt_levels).first)
+      HIT_LATENCY(builder.get_parameter<unsigned>("latency")), vmem(builder.get_parameter<champsim::modules::vmem_module*>("vmem")), CR3_addr(vmem->get_pte_pa(builder.get_parameter<uint32_t>("cpu"), champsim::page_number{}, vmem->get_pt_levels()).first)
 {
   auto m_pscl = builder.get_parameter<std::array<std::array<uint32_t, 3>, 16>>("pscl_dims");
   std::vector<decltype(m_pscl)::value_type> local_pscl_dims{};

@@ -91,7 +91,7 @@ auto champsim::ptw_builder::lower_level(champsim::modules::channel_module* ll_) 
   return *this;
 }
 
-auto champsim::ptw_builder::virtual_memory(VirtualMemory* vmem_) -> ptw_builder&
+auto champsim::ptw_builder::virtual_memory(champsim::modules::vmem_module* vmem_) -> ptw_builder&
 {
   m_vmem = vmem_;
   return *this;

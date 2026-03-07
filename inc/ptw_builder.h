@@ -26,12 +26,11 @@
 #include "bandwidth.h"
 #include "chrono.h"
 
-class VirtualMemory;
 class PageTableWalker;
 namespace champsim
 {
 class channel;
-namespace modules { struct channel_module; }
+namespace modules { struct channel_module; struct vmem_module; }
 class ptw_builder
 {
   std::string_view m_name{};
@@ -46,7 +45,7 @@ class ptw_builder
   unsigned m_latency{};
   std::vector<champsim::modules::channel_module*> m_uls{};
   champsim::modules::channel_module* m_ll{};
-  VirtualMemory* m_vmem{};
+  champsim::modules::vmem_module* m_vmem{};
 
   friend class ::PageTableWalker;
 
@@ -65,7 +64,7 @@ public:
   ptw_builder& latency(unsigned latency_);
   ptw_builder& upper_levels(std::vector<champsim::modules::channel_module*>&& uls_);
   ptw_builder& lower_level(champsim::modules::channel_module* ll_);
-  ptw_builder& virtual_memory(VirtualMemory* vmem_);
+  ptw_builder& virtual_memory(champsim::modules::vmem_module* vmem_);
 };
 } // namespace champsim
 

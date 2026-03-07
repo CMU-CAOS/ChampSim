@@ -31,7 +31,6 @@
 #include "msl/lru_table.h"
 #include "waitable.h"
 
-class VirtualMemory;
 class PageTableWalker : public champsim::modules::page_table_walker_module
 {
   struct pscl_entry {
@@ -47,8 +46,8 @@ class PageTableWalker : public champsim::modules::page_table_walker_module
 
   using pscl_type = champsim::msl::lru_table<pscl_entry, pscl_indexer, pscl_indexer>;
   using channel_type = champsim::modules::channel_module;
-  using request_type = typename channel_type::request_type;
-  using response_type = typename channel_type::response_type;
+  using request_type = typename champsim::request;
+  using response_type = typename champsim::response;
 
   struct mshr_type {
     champsim::address address{};
@@ -87,7 +86,7 @@ public:
   const champsim::chrono::clock::duration HIT_LATENCY;
 
   std::vector<pscl_type> pscl;
-  VirtualMemory* vmem;
+  champsim::modules::vmem_module* vmem;
 
   const champsim::address CR3_addr;
 

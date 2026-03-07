@@ -12,18 +12,18 @@ SCENARIO("A page table walker can handle multiple concurrent walks")
   GIVEN("A 5-level virtual memory")
   {
     constexpr std::size_t levels = 5;
-    MEMORY_CONTROLLER dram{champsim::modules::ModuleBuilder{"dram", "DRAM", nullptr, champsim::defaults::default_memory_controller()}};
-    VirtualMemory vmem{champsim::modules::ModuleBuilder{"vmem", "VMEM", nullptr, champsim::defaults::default_vmem()}
+    MEMORY_CONTROLLER dram{champsim::modules::ModuleBuilder{"dram", "DEFAULT_MEMORY_CONTROLLER", nullptr, champsim::defaults::default_memory_controller()}};
+    VirtualMemory vmem{champsim::modules::ModuleBuilder{"vmem", "DEFAULT_VMEM", nullptr, champsim::defaults::default_vmem()}
         .add_parameter("page_table_levels", static_cast<std::size_t>(levels))
         .add_parameter("minor_fault_penalty", champsim::chrono::picoseconds{champsim::chrono::nanoseconds{640}})
         .add_parameter("dram", static_cast<champsim::modules::memory_controller_module*>(&dram))};
     do_nothing_MRC mock_ll{5};
     to_rq_MRP mock_ul;
-    PageTableWalker uut{champsim::modules::ModuleBuilder{"uut_ptw", "PTW", nullptr, champsim::defaults::default_ptw()}
+    PageTableWalker uut{champsim::modules::ModuleBuilder{"uut_ptw", "DEFAULT_PTW", nullptr, champsim::defaults::default_ptw()}
                             .add_parameter("clock_period", champsim::chrono::picoseconds{3200})
                             .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul.queues})
                             .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
-                            .add_parameter("vmem", static_cast<VirtualMemory*>(&vmem))
+                            .add_parameter("vmem", static_cast<champsim::modules::vmem_module*>(&vmem))
                             .add_parameter("max_tag_check", champsim::bandwidth::maximum_type{2})
                             .add_parameter("max_fill", champsim::bandwidth::maximum_type{2})};
 
@@ -75,8 +75,8 @@ SCENARIO("Concurrent page table walks can be merged")
     const champsim::address base_address{seed_address};
     const champsim::address nearby_address{0xffff'ffff'ffff'efff};
 
-    MEMORY_CONTROLLER dram{champsim::modules::ModuleBuilder{"dram", "DRAM", nullptr, champsim::defaults::default_memory_controller()}};
-    VirtualMemory vmem{champsim::modules::ModuleBuilder{"vmem", "VMEM", nullptr, champsim::defaults::default_vmem()}
+    MEMORY_CONTROLLER dram{champsim::modules::ModuleBuilder{"dram", "DEFAULT_MEMORY_CONTROLLER", nullptr, champsim::defaults::default_memory_controller()}};
+    VirtualMemory vmem{champsim::modules::ModuleBuilder{"vmem", "DEFAULT_VMEM", nullptr, champsim::defaults::default_vmem()}
         .add_parameter("page_table_levels", static_cast<std::size_t>(levels))
         .add_parameter("minor_fault_penalty", champsim::chrono::picoseconds{champsim::chrono::nanoseconds{10}})
         .add_parameter("dram", static_cast<champsim::modules::memory_controller_module*>(&dram))};
@@ -84,11 +84,11 @@ SCENARIO("Concurrent page table walks can be merged")
     to_rq_MRP mock_ul{[](auto x, auto y) {
       return champsim::block_number{x.address} == champsim::block_number{y.address};
     }};
-    PageTableWalker uut{champsim::modules::ModuleBuilder{"uut_ptw", "PTW", nullptr, champsim::defaults::default_ptw()}
+    PageTableWalker uut{champsim::modules::ModuleBuilder{"uut_ptw", "DEFAULT_PTW", nullptr, champsim::defaults::default_ptw()}
                             .add_parameter("clock_period", champsim::chrono::picoseconds{3200})
                             .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul.queues})
                             .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
-                            .add_parameter("vmem", static_cast<VirtualMemory*>(&vmem))
+                            .add_parameter("vmem", static_cast<champsim::modules::vmem_module*>(&vmem))
                             .add_parameter("max_tag_check", champsim::bandwidth::maximum_type{2})
                             .add_parameter("max_fill", champsim::bandwidth::maximum_type{2})};
 

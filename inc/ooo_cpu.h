@@ -143,7 +143,7 @@ public:
   std::deque<ooo_model_instr> input_queue;
 
   CacheBus L1I_bus, L1D_bus;
-  CACHE* l1i;
+  champsim::modules::cache_module* l1i;
 
   void initialize() final;
   long operate() final;
@@ -218,7 +218,7 @@ public:
         DECODE_LATENCY(builder.get_parameter<unsigned>("decode_latency") * builder.get_parameter<champsim::chrono::picoseconds>("clock_period")), SCHEDULING_LATENCY(builder.get_parameter<unsigned>("schedule_latency") * builder.get_parameter<champsim::chrono::picoseconds>("clock_period")),
         EXEC_LATENCY(builder.get_parameter<unsigned>("execute_latency") * builder.get_parameter<champsim::chrono::picoseconds>("clock_period")), DIB_HIT_LATENCY(builder.get_parameter<unsigned>("dib_hit_latency") * builder.get_parameter<champsim::chrono::picoseconds>("clock_period")), L1I_BANDWIDTH(builder.get_parameter<champsim::bandwidth::maximum_type>("l1i_bandwidth")),
         L1D_BANDWIDTH(builder.get_parameter<champsim::bandwidth::maximum_type>("l1d_bandwidth")), IN_QUEUE_SIZE(2 * champsim::to_underlying(builder.get_parameter<champsim::bandwidth::maximum_type>("fetch_width"))), L1I_bus(builder.get_parameter<uint8_t>("cpu"), builder.get_parameter<champsim::modules::channel_module*>("fetch_queues")),
-        L1D_bus(builder.get_parameter<uint8_t>("cpu"), builder.get_parameter<champsim::modules::channel_module*>("data_queues")), l1i(builder.get_parameter<CACHE*>("l1i"))
+        L1D_bus(builder.get_parameter<uint8_t>("cpu"), builder.get_parameter<champsim::modules::channel_module*>("data_queues")), l1i(builder.get_parameter<champsim::modules::cache_module*>("l1i"))
   {
     if(std::size(builder.get_parameter<std::vector<std::string>>("bp_impls")) == 0) {
       fmt::print("[CPU {}] WARNING: No branch predictor modules specified, using hashed perceptron\n",cpu);

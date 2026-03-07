@@ -15,9 +15,9 @@ class L1IPathTests(unittest.TestCase):
         path = config.defaults.list_defaults_for_core(self.cpu, self.caches)[0]
         defs = {v['name']:v.get('_defaults') for v in path}
         expected = {
-            'l1': 'champsim::defaults::default_l1i',
-            'l2': 'champsim::defaults::default_l2c',
-            'l3': 'champsim::defaults::default_llc'
+            'l1': 'champsim::defaults::default_l1i()',
+            'l2': 'champsim::defaults::default_l2c()',
+            'l3': 'champsim::defaults::default_llc()'
         }
         self.assertDictEqual(defs, expected)
 
@@ -62,10 +62,10 @@ class JoiningL1IPathDefaultsTests(unittest.TestCase):
         path = config.defaults.list_defaults(self.cores, self.same_level_join_caches)
         defs = {v['name']:v.get('_defaults') for v in path}
         expected = {
-            'l1_0': 'champsim::defaults::default_l1i',
-            'l2_0': 'champsim::defaults::default_l2c',
-            'l3_0': 'champsim::defaults::default_llc',
-            'l1_1': 'champsim::defaults::default_l1i'
+            'l1_0': 'champsim::defaults::default_l1i()',
+            'l2_0': 'champsim::defaults::default_l2c()',
+            'l3_0': 'champsim::defaults::default_llc()',
+            'l1_1': 'champsim::defaults::default_l1i()'
         }
         self.assertDictEqual(defs, expected)
 
@@ -73,10 +73,10 @@ class JoiningL1IPathDefaultsTests(unittest.TestCase):
         path = config.defaults.list_defaults(self.cores, self.different_level_join_caches)
         defs = {v['name']:v.get('_defaults') for v in path}
         expected = {
-            'l1_0': 'champsim::defaults::default_l1i',
-            'l2_0': 'champsim::defaults::default_l2c',
-            'l3_0': 'champsim::defaults::default_llc',
-            'l1_1': 'champsim::defaults::default_l1i'
+            'l1_0': 'champsim::defaults::default_l1i()',
+            'l2_0': 'champsim::defaults::default_l2c()',
+            'l3_0': 'champsim::defaults::default_llc()',
+            'l1_1': 'champsim::defaults::default_l1i()'
         }
         self.assertDictEqual(defs, expected)
 
@@ -92,9 +92,9 @@ class L1DPathTests(unittest.TestCase):
         path = config.defaults.list_defaults_for_core(cpu, caches)[1]
         defs = {v['name']:v.get('_defaults') for v in path}
         expected = {
-            'l1': 'champsim::defaults::default_l1d',
-            'l2': 'champsim::defaults::default_l2c',
-            'l3': 'champsim::defaults::default_llc'
+            'l1': 'champsim::defaults::default_l1d()',
+            'l2': 'champsim::defaults::default_l2c()',
+            'l3': 'champsim::defaults::default_llc()'
         }
         self.assertDictEqual(defs, expected)
 
@@ -136,10 +136,10 @@ class JoiningL1DPathDefaultsTests(unittest.TestCase):
         path = config.defaults.list_defaults(self.cores, self.same_level_join_caches)
         defs = {v['name']:v.get('_defaults') for v in path}
         expected = {
-            'l1_0': 'champsim::defaults::default_l1d',
-            'l2_0': 'champsim::defaults::default_l2c',
-            'l3_0': 'champsim::defaults::default_llc',
-            'l1_1': 'champsim::defaults::default_l1d'
+            'l1_0': 'champsim::defaults::default_l1d()',
+            'l2_0': 'champsim::defaults::default_l2c()',
+            'l3_0': 'champsim::defaults::default_llc()',
+            'l1_1': 'champsim::defaults::default_l1d()'
         }
         self.assertDictEqual(defs, expected)
 
@@ -147,10 +147,10 @@ class JoiningL1DPathDefaultsTests(unittest.TestCase):
         path = config.defaults.list_defaults(self.cores, self.different_level_join_caches)
         defs = {v['name']:v.get('_defaults') for v in path}
         expected = {
-            'l1_0': 'champsim::defaults::default_l1d',
-            'l2_0': 'champsim::defaults::default_l2c',
-            'l3_0': 'champsim::defaults::default_llc',
-            'l1_1': 'champsim::defaults::default_l1d'
+            'l1_0': 'champsim::defaults::default_l1d()',
+            'l2_0': 'champsim::defaults::default_l2c()',
+            'l3_0': 'champsim::defaults::default_llc()',
+            'l1_1': 'champsim::defaults::default_l1d()'
         }
         self.assertDictEqual(defs, expected)
 
@@ -165,8 +165,8 @@ class ITLBPathTests(unittest.TestCase):
         path = config.defaults.list_defaults_for_core(cpu, caches)[2]
         defs = {v['name']:v.get('_defaults') for v in path}
         expected = {
-            'l1': 'champsim::defaults::default_itlb',
-            'l2': 'champsim::defaults::default_stlb'
+            'l1': 'champsim::defaults::default_itlb()',
+            'l2': 'champsim::defaults::default_stlb()'
         }
         self.assertDictEqual(defs, expected)
 
@@ -198,9 +198,9 @@ class JoiningITLBPathDefaultsTests(unittest.TestCase):
         path = config.defaults.list_defaults(self.cores, self.same_level_join_caches)
         defs = {v['name']:v.get('_defaults') for v in path}
         expected = {
-            'l1_0': 'champsim::defaults::default_itlb',
-            'l2_0': 'champsim::defaults::default_stlb',
-            'l1_1': 'champsim::defaults::default_itlb'
+            'l1_0': 'champsim::defaults::default_itlb()',
+            'l2_0': 'champsim::defaults::default_stlb()',
+            'l1_1': 'champsim::defaults::default_itlb()'
         }
         self.assertDictEqual(defs, expected)
 
@@ -215,8 +215,8 @@ class DTLBPathTests(unittest.TestCase):
         path = config.defaults.list_defaults_for_core(cpu, caches)[3]
         defs = {v['name']:v.get('_defaults') for v in path}
         expected = {
-            'l1': 'champsim::defaults::default_dtlb',
-            'l2': 'champsim::defaults::default_stlb'
+            'l1': 'champsim::defaults::default_dtlb()',
+            'l2': 'champsim::defaults::default_stlb()'
         }
         self.assertDictEqual(defs, expected)
 
@@ -248,8 +248,8 @@ class JoiningDTLBPathDefaultsTests(unittest.TestCase):
         path = config.defaults.list_defaults(self.cores, self.same_level_join_caches)
         defs = {v['name']:v.get('_defaults') for v in path}
         expected = {
-            'l1_0': 'champsim::defaults::default_dtlb',
-            'l2_0': 'champsim::defaults::default_stlb',
-            'l1_1': 'champsim::defaults::default_dtlb'
+            'l1_0': 'champsim::defaults::default_dtlb()',
+            'l2_0': 'champsim::defaults::default_stlb()',
+            'l1_1': 'champsim::defaults::default_dtlb()'
         }
         self.assertDictEqual(defs, expected)

@@ -22,79 +22,79 @@ import multiprocessing as mp
 from . import util
 from . import cxx
 
-pmem_fmtstr = 'champsim::modules::ModuleBuilder{{"{name}","{model}",this}}.add_parameter("clock_period_dbus", champsim::chrono::picoseconds{{{clock_period_dbus}}}).add_parameter("clock_period_mc", champsim::chrono::picoseconds{{{clock_period_mc}}}).add_parameter("tRP", std::size_t{{{_tRP}}}).add_parameter("tRCD", std::size_t{{{_tRCD}}}).add_parameter("tCAS", std::size_t{{{_tCAS}}}).add_parameter("tRAS", std::size_t{{{_tRAS}}}).add_parameter("refresh_period", champsim::chrono::microseconds{{{_refresh_period}}}).add_parameter("ulptr", std::vector<champsim::modules::channel_module*>{{{_ulptr}}}).add_parameter("rq_size", {rq_size}).add_parameter("wq_size", {wq_size}).add_parameter("channels", {channels}).add_parameter("channel_width", champsim::data::bytes{{{channel_width}}}).add_parameter("bank_rows", {_bank_rows}).add_parameter("bank_columns", {_bank_columns}).add_parameter("ranks", {ranks}).add_parameter("bankgroups", {bankgroups}).add_parameter("banks", {banks}).add_parameter("refreshes_per_period", {_refreshes_per_period})'
-vmem_fmtstr = 'champsim::modules::ModuleBuilder{{"{name}","{model}",this}}.add_parameter("pte_page_size", champsim::data::bytes{{{pte_page_size}}}).add_parameter("num_levels", {num_levels}).add_parameter("minor_fault_penalty", champsim::chrono::picoseconds{{{clock_period}*{minor_fault_penalty}}}).add_parameter("dram_name", "{dram_name}").add_parameter("_randomization_seed", {_randomization})'
+pmem_fmtstr = 'champsim::modules::ModuleBuilder{{"{name}","{model}",(champsim::environment*)this}}.add_parameter("dbus_period", champsim::chrono::picoseconds{{{clock_period_dbus}}}).add_parameter("mc_period", champsim::chrono::picoseconds{{{clock_period_mc}}}).add_parameter("t_rp", std::size_t{{{_tRP}}}).add_parameter("t_rcd", std::size_t{{{_tRCD}}}).add_parameter("t_cas", std::size_t{{{_tCAS}}}).add_parameter("t_ras", std::size_t{{{_tRAS}}}).add_parameter("refresh_period", champsim::chrono::microseconds{{{_refresh_period}}}).add_parameter("ul_channels", std::vector<champsim::modules::channel_module*>{{{_ulptr}}}).add_parameter("rq_size", std::size_t{{{rq_size}}}).add_parameter("wq_size", std::size_t{{{wq_size}}}).add_parameter("channels", std::size_t{{{channels}}}).add_parameter("channel_width", champsim::data::bytes{{{channel_width}}}).add_parameter("rows", std::size_t{{{_bank_rows}}}).add_parameter("columns", std::size_t{{{_bank_columns}}}).add_parameter("ranks", std::size_t{{{ranks}}}).add_parameter("bankgroups", std::size_t{{{bankgroups}}}).add_parameter("banks", std::size_t{{{banks}}}).add_parameter("refreshes_per_period", std::size_t{{{_refreshes_per_period}}})'
+vmem_fmtstr = 'champsim::modules::ModuleBuilder{{"{name}","{model}",(champsim::environment*)this}}.add_parameter("page_table_page_size", champsim::data::bytes{{{pte_page_size}}}).add_parameter("page_table_levels", std::size_t{{{num_levels}}}).add_parameter("minor_fault_penalty", champsim::chrono::picoseconds{{{clock_period}*{minor_fault_penalty}}}).add_parameter("dram", DRAM).add_parameter("randomization_seed", std::optional<uint64_t>{{{_randomization}}})'
 
-queue_fmtstr = 'champsim::modules::ModuleBuilder{{"{name}","{model}",this}}.add_parameter("rq_size", {rq_size}).add_parameter("pq_size", {pq_size}).add_parameter("wq_size", {wq_size}).add_parameter("offset_bits", champsim::data::bits{{{_offset_bits}}}).add_parameter("check_full_addr", {_queue_check_full_addr:b})'
+queue_fmtstr = 'champsim::modules::ModuleBuilder{{"{name}","{model}",(champsim::environment*)this}}.add_parameter("rq_size", std::size_t{{{rq_size}}}).add_parameter("pq_size", std::size_t{{{pq_size}}}).add_parameter("wq_size", std::size_t{{{wq_size}}}).add_parameter("offset_bits", champsim::data::bits{{{_offset_bits}}}).add_parameter("match_offset_bits", bool{{{_queue_check_full_addr:b}}})'
 
 core_builder_parts = {
-    'ifetch_buffer_size': '.add_parameter("ifetch_buffer_size", {ifetch_buffer_size})',
-    'decode_buffer_size': '.add_parameter("decode_buffer_size", {decode_buffer_size})',
-    'dispatch_buffer_size': '.add_parameter("dispatch_buffer_size", {dispatch_buffer_size})',
-    'register_file_size': '.add_parameter("register_file_size", {register_file_size})',
-    'rob_size': '.add_parameter("rob_size", {rob_size})',
-    'lq_size': '.add_parameter("lq_size", {lq_size})',
-    'sq_size': '.add_parameter("sq_size", {sq_size})',
-    'fetch_width': '.add_parameter("fetch_width", {fetch_width})',
-    'decode_width': '.add_parameter("decode_width", {decode_width})',
-    'dispatch_width': '.add_parameter("dispatch_width", {dispatch_width})',
-    'scheduler_size': '.add_parameter("scheduler_size", {scheduler_size})',
-    'execute_width': '.add_parameter("execute_width", {execute_width})',
-    'lq_width': '.add_parameter("lq_width", {lq_width})',
-    'sq_width': '.add_parameter("sq_width", {sq_width})',
-    'retire_width': '.add_parameter("retire_width", {retire_width})',
-    'mispredict_penalty': '.add_parameter("mispredict_penalty", {mispredict_penalty})',
-    'decode_latency': '.add_parameter("decode_latency", {decode_latency})',
-    'dispatch_latency': '.add_parameter("dispatch_latency", {dispatch_latency})',
-    'schedule_latency': '.add_parameter("schedule_latency", {schedule_latency})',
-    'execute_latency': '.add_parameter("execute_latency", {execute_latency})',
-    'dib_set': '  .add_parameter("dib_set", {dib_set})',
-    'dib_way': '  .add_parameter("dib_way", {dib_way})',
-    'dib_window': '  .add_parameter("dib_window", {dib_window})',
-    'L1I': ['.add_parameter("l1i", {^l1i_ptr})', '.add_parameter("l1i_bandwidth", {^l1i_ptr}->get_max_tag_bandwidth())', '.add_parameter("fetch_queues", &{^fetch_queues})'],
-    'L1D': ['.add_parameter("l1d", {^l1d_ptr})', '.add_parameter("l1d_bandwidth", {^l1d_ptr}->get_max_tag_bandwidth())', '.add_parameter("data_queues", &{^data_queues})'],
-    '_branch_predictor_data': '.add_parameter("branch_predictor", {^branch_predictor_string})',
-    '_btb_data': '.add_parameter("btb", {^btb_string})',
-    '_index': '.add_parameter("index", {_index})',
-    'frequency': '.add_parameter("frequency", champsim::chrono::picoseconds{{{^clock_period}}})'
+    'ifetch_buffer_size': '.add_parameter("ifetch_buffer_size", static_cast<uint32_t>({ifetch_buffer_size}))',
+    'decode_buffer_size': '.add_parameter("decode_buffer_size", static_cast<uint32_t>({decode_buffer_size}))',
+    'dispatch_buffer_size': '.add_parameter("dispatch_buffer_size", static_cast<uint32_t>({dispatch_buffer_size}))',
+    'register_file_size': '.add_parameter("register_file_size", static_cast<uint32_t>({register_file_size}))',
+    'rob_size': '.add_parameter("rob_size", static_cast<uint32_t>({rob_size}))',
+    'lq_size': '.add_parameter("lq_size", static_cast<uint32_t>({lq_size}))',
+    'sq_size': '.add_parameter("sq_size", static_cast<uint32_t>({sq_size}))',
+    'fetch_width': '.add_parameter("fetch_width", champsim::bandwidth::maximum_type{{{fetch_width}}})',
+    'decode_width': '.add_parameter("decode_width", champsim::bandwidth::maximum_type{{{decode_width}}})',
+    'dispatch_width': '.add_parameter("dispatch_width", champsim::bandwidth::maximum_type{{{dispatch_width}}})',
+    'scheduler_size': '.add_parameter("schedule_width", champsim::bandwidth::maximum_type{{{scheduler_size}}})',
+    'execute_width': '.add_parameter("execute_width", champsim::bandwidth::maximum_type{{{execute_width}}})',
+    'lq_width': '.add_parameter("lq_width", champsim::bandwidth::maximum_type{{{lq_width}}})',
+    'sq_width': '.add_parameter("sq_width", champsim::bandwidth::maximum_type{{{sq_width}}})',
+    'retire_width': '.add_parameter("retire_width", champsim::bandwidth::maximum_type{{{retire_width}}})',
+    'mispredict_penalty': '.add_parameter("mispredict_penalty", static_cast<unsigned>({mispredict_penalty}))',
+    'decode_latency': '.add_parameter("decode_latency", static_cast<unsigned>({decode_latency}))',
+    'dispatch_latency': '.add_parameter("dispatch_latency", static_cast<unsigned>({dispatch_latency}))',
+    'schedule_latency': '.add_parameter("schedule_latency", static_cast<unsigned>({schedule_latency}))',
+    'execute_latency': '.add_parameter("execute_latency", static_cast<unsigned>({execute_latency}))',
+    'dib_set': '  .add_parameter("dib_set", static_cast<uint32_t>({dib_set}))',
+    'dib_way': '  .add_parameter("dib_way", static_cast<uint32_t>({dib_way}))',
+    'dib_window': '  .add_parameter("dib_window", static_cast<std::size_t>({dib_window}))',
+    'L1I': ['.add_parameter("l1i", {^l1i_ptr})', '.add_parameter("l1i_bandwidth", {^l1i_ptr}->get_max_tag_bandwidth())', '.add_parameter("fetch_queues", {^fetch_queues})'],
+    'L1D': ['.add_parameter("l1d", {^l1d_ptr})', '.add_parameter("l1d_bandwidth", {^l1d_ptr}->get_max_tag_bandwidth())', '.add_parameter("data_queues", {^data_queues})'],
+    '_branch_predictor_data': '.add_parameter("bp_impls", std::vector<std::string>{{{^branch_predictor_string}}})',
+    '_btb_data': '.add_parameter("btb_impls", std::vector<std::string>{{{^btb_string}}})',
+    '_index': '.add_parameter("cpu", static_cast<uint8_t>({_index}))',
+    'frequency': '.add_parameter("clock_period", champsim::chrono::picoseconds{{{^clock_period}}})'
 }
 
 dib_builder_parts = {
-    'sets': '  .add_parameter("dib_set", {DIB[sets]})',
-    'ways': '  .add_parameter("dib_way", {DIB[ways]})',
-    'window_size': '  .add_parameter("dib_window", {DIB[window_size]})'
+    'sets': '  .add_parameter("dib_set", static_cast<uint32_t>({DIB[sets]}))',
+    'ways': '  .add_parameter("dib_way", static_cast<uint32_t>({DIB[ways]}))',
+    'window_size': '  .add_parameter("dib_window", static_cast<std::size_t>({DIB[window_size]}))'
 }
 
 cache_builder_parts = {
     'size': '.add_parameter("size", champsim::data::bytes{{{size}}})',
-    'log2_size': '.add_parameter("log2_size", {log2_size})',
-    'sets': '.add_parameter("sets", {sets})',
-    'log2_sets': '.add_parameter("log2_sets", {log2_sets})',
-    'ways': '.add_parameter("ways", {ways})',
-    'log2_ways': '.add_parameter("log2_ways", {log2_ways})',
-    'pq_size': '.add_parameter("pq_size", {pq_size})',
-    'mshr_size': '.add_parameter("mshr_size", {mshr_size})',
-    'latency': '.add_parameter("latency", {latency})',
-    'hit_latency': '.add_parameter("hit_latency", {hit_latency})',
-    'fill_latency': '.add_parameter("fill_latency", {fill_latency})',
-    'max_tag_check': '.add_parameter("max_tag_check", champsim::bandwidth::maximum_type{{{max_tag_check}}})',
-    'max_fill': '.add_parameter("max_fill", champsim::bandwidth::maximum_type{{{max_fill}}})',
+    'log2_size': '.add_parameter("log2_size", static_cast<uint32_t>({log2_size}))',
+    'sets': '.add_parameter("num_sets", static_cast<uint32_t>({sets}))',
+    'log2_sets': '.add_parameter("log2_sets", static_cast<uint32_t>({log2_sets}))',
+    'ways': '.add_parameter("num_ways", static_cast<uint32_t>({ways}))',
+    'log2_ways': '.add_parameter("log2_ways", static_cast<uint32_t>({log2_ways}))',
+    'pq_size': '.add_parameter("pq_size", static_cast<std::size_t>({pq_size}))',
+    'mshr_size': '.add_parameter("mshr_size", static_cast<uint32_t>({mshr_size}))',
+    'latency': '.add_parameter("latency", static_cast<uint64_t>({latency}))',
+    'hit_latency': '.add_parameter("hit_latency", static_cast<uint64_t>({hit_latency}))',
+    'fill_latency': '.add_parameter("fill_latency", static_cast<uint64_t>({fill_latency}))',
+    'max_tag_check': '.add_parameter("max_tag_bandwidth", champsim::bandwidth::maximum_type{{{max_tag_check}}})',
+    'max_fill': '.add_parameter("max_fill_bandwidth", champsim::bandwidth::maximum_type{{{max_fill}}})',
     '_offset_bits': '.add_parameter("offset_bits", champsim::data::bits{{{_offset_bits}}})',
-    'prefetch_activate': '.add_parameter("prefetch_activate", {^prefetch_activate_string})',
-    '_replacement_data': '.add_parameter("replacement", {^replacement_string})',
-    '_prefetcher_data': '.add_parameter("prefetcher", {^prefetcher_string})',
-    'lower_translate': '.add_parameter("lower_translate", &{^lower_translate_queues})',
-    'lower_level': '.add_parameter("lower_level", &{^lower_level_queues})',
-    'frequency': '.add_parameter("frequency", champsim::chrono::picoseconds{{{^clock_period}}})'
+    'prefetch_activate': '.add_parameter("pref_activate_mask", {^prefetch_activate_string})',
+    '_replacement_data': '.add_parameter("replacement_modules", std::vector<std::string>{{{^replacement_string}}})',
+    '_prefetcher_data': '.add_parameter("prefetcher_modules", std::vector<std::string>{{{^prefetcher_string}}})',
+    'lower_translate': '.add_parameter("lower_translate", {^lower_translate_queues})',
+    'lower_level': '.add_parameter("lower_level", {^lower_level_queues})',
+    'frequency': '.add_parameter("clock_period", champsim::chrono::picoseconds{{{^clock_period}}})'
 }
 
 ptw_builder_parts = {
-    'cpu': '.add_parameter("cpu", {cpu})',
-    'lower_level': '.add_parameter("lower_level", &{^lower_level_queues})',
-    'mshr_size': '.add_parameter("mshr_size", {mshr_size})',
-    'max_read': '.add_parameter("max_read", tag_bandwidth(champsim::bandwidth::maximum_type{{{max_read}}}))',
-    'max_write': '.add_parameter("max_write", fill_bandwidth(champsim::bandwidth::maximum_type{{{max_write}}}))',
-    'frequency': '.add_parameter("frequency", champsim::chrono::picoseconds{{{^clock_period}}})'
+    'cpu': '.add_parameter("cpu", static_cast<uint32_t>({cpu}))',
+    'lower_level': '.add_parameter("lower_level", {^lower_level_queues})',
+    'mshr_size': '.add_parameter("mshr_size", static_cast<uint32_t>({mshr_size}))',
+    'max_read': '.add_parameter("max_tag_check", champsim::bandwidth::maximum_type{{{max_read}}})',
+    'max_write': '.add_parameter("max_fill", champsim::bandwidth::maximum_type{{{max_write}}})',
+    'frequency': '.add_parameter("clock_period", champsim::chrono::picoseconds{{{^clock_period}}})'
 }
 
 def vector_string(iterable):
@@ -126,7 +126,7 @@ def get_cpu_builder(cpu, caches, ul_pairs):
         local_params['^clock_period'] = int(1000000/cpu['frequency'])
 
     builder_parts = itertools.chain(util.multiline(itertools.chain(
-        ('champsim::modules::ModuleBuilder{{"{name}","{model}",this, champsim::defaults::default_core()}}',),
+        ('champsim::modules::ModuleBuilder{{"{name}","{model}",(champsim::environment*)this, champsim::defaults::default_core()}}',),
         required_parts,
         *(util.wrap_list(v) for k,v in core_builder_parts.items() if k in cpu),
         (v for k,v in dib_builder_parts.items() if k in cpu.get('DIB',{}))
@@ -144,8 +144,8 @@ def get_cache_builder(elem, ul_pairs):
     local_cache_builder_parts = {
         ('prefetch_as_load', True): '.add_parameter("prefetch_as_load", true)',
         ('prefetch_as_load', False): '.add_parameter("prefetch_as_load", false)',
-        ('wq_check_full_addr', True): '.add_parameter("wq_check_full_addr", true)',
-        ('wq_check_full_addr', False): '.add_parameter("wq_check_full_addr", false)',
+        ('wq_check_full_addr', True): '.add_parameter("match_offset_bits", true)',
+        ('wq_check_full_addr', False): '.add_parameter("match_offset_bits", false)',
         ('virtual_prefetch', True): '.add_parameter("virtual_prefetch", true)',
         ('virtual_prefetch', False): '.add_parameter("virtual_prefetch", false)'
     }
@@ -167,7 +167,7 @@ def get_cache_builder(elem, ul_pairs):
         })
 
     builder_parts = itertools.chain(util.multiline(itertools.chain(
-        ('champsim::modules::ModuleBuilder{{"{name}","{model}",this, {^defaults} }}',),
+        ('champsim::modules::ModuleBuilder{{"{name}","{model}",(champsim::environment*)this, {^defaults} }}',),
         required_parts,
         (v for k,v in cache_builder_parts.items() if k in elem),
         (v for k,v in local_cache_builder_parts.items() if k[0] in elem and k[1] == elem[k[0]])
@@ -180,7 +180,7 @@ def get_ptw_builder(ptw, ul_pairs):
     '''
     required_parts = [
         '.add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{{{^upper_levels_string}}})',
-        '.add_parameter("virtual_memory", &vmem)'
+        '.add_parameter("vmem", vmem)'
     ]
 
     local_ptw_builder_parts = {
@@ -199,7 +199,7 @@ def get_ptw_builder(ptw, ul_pairs):
         local_params['^clock_period'] = int(1000000/ptw['frequency'])
 
     builder_parts = itertools.chain(util.multiline(itertools.chain(
-        ('champsim::modules::ModuleBuilder{{"{name}","{model}",this, champsim::defaults::default_ptw()}}',),
+        ('champsim::modules::ModuleBuilder{{"{name}","{model}",(champsim::environment*)this, champsim::defaults::default_ptw()}}',),
         required_parts,
         (v for k,v in ptw_builder_parts.items() if k in ptw),
         (v for keys,v in local_ptw_builder_parts.items() if any(k in ptw for k in keys))
@@ -358,9 +358,8 @@ def get_instantiation_lines(cores, caches, ptws, pmem, vmem, build_id):
     vmem_instantiation_body = (
         'vmem{build<champsim::modules::vmem_module>(',
         vmem_fmtstr.format(
-            dram_name=pmem['name'], 
             clock_period=global_clock_period,
-            _randomization= '{}' if (isinstance(vmem['randomization'],bool) and vmem['randomization'] == False) else int(vmem['randomization']),
+            _randomization= '' if (isinstance(vmem['randomization'],bool) and vmem['randomization'] == False) else int(vmem['randomization']),
             **vmem),
         ')},',
     )

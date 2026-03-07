@@ -67,7 +67,7 @@ struct ModuleBuilder {
       if(optional) {
         return default_value;
       }
-      fmt::print("[MODULE] [{}] ERROR: parameter {} not found for module construction\n",module_name,name);
+      fmt::print("[MODULE] [{}] ERROR: parameter {} not found\n",module_name,name);
       exit(-1);
     }
   }
@@ -137,7 +137,7 @@ struct module_base {
             exit(-1);
         }
         if(module_map().find(builder.get_model()) == module_map().end()) {
-            fmt::print("[MODULE] ERROR: specified module {} does not exist\n",builder.get_model());
+            fmt::print("[MODULE] [{}] ERROR: specified model {} is not registered\n",builder.get_name(),builder.get_model());
             exit(-1);
         }
         try {
@@ -211,6 +211,7 @@ struct module_base {
     virtual bool prefetch_line(champsim::address pf_addr, bool fill_this_level, uint32_t prefetch_metadata) = 0;
     virtual void impl_update_replacement_state(uint32_t triggering_cpu, long set, long way, champsim::address full_addr, champsim::address ip,
                                        champsim::address victim_addr, access_type type, bool hit) const = 0;
+    virtual void impl_prefetcher_branch_operate(champsim::address ip, uint8_t branch_type, champsim::address target) const = 0;
 
     virtual long invalidate_entry(champsim::address inval_addr) = 0;
     virtual std::size_t get_mshr_occupancy() const = 0;
@@ -285,6 +286,9 @@ struct module_base {
     virtual std::size_t available_ppages() const = 0;
     virtual std::pair<champsim::page_number, champsim::chrono::clock::duration> va_to_pa(uint32_t cpu_num, champsim::page_number vaddr) = 0;
     virtual std::pair<champsim::address, champsim::chrono::clock::duration> get_pte_pa(uint32_t cpu_num, champsim::page_number vaddr, std::size_t level) = 0;
+    virtual champsim::data::bits shamt(std::size_t level) const = 0;
+    virtual uint64_t get_offset(champsim::address vaddr, std::size_t level) const = 0;
+    virtual std::size_t get_pt_levels() const = 0;
   };
 
   struct prefetcher: public module_base<prefetcher,cache_module> {

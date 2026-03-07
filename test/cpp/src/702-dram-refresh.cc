@@ -115,7 +115,7 @@ SCENARIO("The memory controller refreshes each bank at the proper rate")
     auto REFRESHES_PER_PERIOD = GENERATE(as<std::size_t>{}, 8192, 16384);
     const champsim::chrono::picoseconds tREF{refresh_period / REFRESHES_PER_PERIOD};
 
-    MEMORY_CONTROLLER uut{champsim::modules::ModuleBuilder{"uut", "DRAM", nullptr, champsim::defaults::default_memory_controller()}
+    MEMORY_CONTROLLER uut{champsim::modules::ModuleBuilder{"uut", "DEFAULT_MEMORY_CONTROLLER", nullptr, champsim::defaults::default_memory_controller()}
                               .add_parameter("dbus_period", champsim::chrono::picoseconds{312})
                               .add_parameter("mc_period", champsim::chrono::picoseconds{624})
                               .add_parameter("t_rp", static_cast<std::size_t>(24))

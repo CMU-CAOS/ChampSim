@@ -146,4 +146,6 @@ std::pair<champsim::address, champsim::chrono::clock::duration> VirtualMemory::g
   return {paddr, penalty};
 }
 
+std::size_t VirtualMemory::get_pt_levels() const { return pt_levels; }
+
 champsim::modules::vmem_module::register_module<VirtualMemory> default_virtual_memory_module("DEFAULT_VMEM");
