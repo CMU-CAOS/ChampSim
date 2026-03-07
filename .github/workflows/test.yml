@@ -181,7 +181,6 @@ jobs:
       run: |
         lcov --capture --no-external \
         --directory . \
-        --exclude $(pwd)/.csconfig/\* \
         --exclude $(pwd)/test/\* \
         --exclude $(pwd)/vcpkg_installed/\* \
         --output-file lcov_cpp.info
