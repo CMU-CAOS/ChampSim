@@ -28,13 +28,13 @@ vmem_fmtstr = 'champsim::modules::ModuleBuilder{{"{name}","{model}",(champsim::e
 queue_fmtstr = 'champsim::modules::ModuleBuilder{{"{name}","{model}",(champsim::environment*)this}}.add_parameter("rq_size", std::size_t{{{rq_size}}}).add_parameter("pq_size", std::size_t{{{pq_size}}}).add_parameter("wq_size", std::size_t{{{wq_size}}}).add_parameter("offset_bits", champsim::data::bits{{{_offset_bits}}}).add_parameter("match_offset_bits", bool{{{_queue_check_full_addr:b}}})'
 
 core_builder_parts = {
-    'ifetch_buffer_size': '.add_parameter("ifetch_buffer_size", static_cast<uint32_t>({ifetch_buffer_size}))',
-    'decode_buffer_size': '.add_parameter("decode_buffer_size", static_cast<uint32_t>({decode_buffer_size}))',
-    'dispatch_buffer_size': '.add_parameter("dispatch_buffer_size", static_cast<uint32_t>({dispatch_buffer_size}))',
-    'register_file_size': '.add_parameter("register_file_size", static_cast<uint32_t>({register_file_size}))',
-    'rob_size': '.add_parameter("rob_size", static_cast<uint32_t>({rob_size}))',
-    'lq_size': '.add_parameter("lq_size", static_cast<uint32_t>({lq_size}))',
-    'sq_size': '.add_parameter("sq_size", static_cast<uint32_t>({sq_size}))',
+    'ifetch_buffer_size': '.add_parameter("ifetch_buffer_size", {ifetch_buffer_size})',
+    'decode_buffer_size': '.add_parameter("decode_buffer_size", {decode_buffer_size})',
+    'dispatch_buffer_size': '.add_parameter("dispatch_buffer_size", {dispatch_buffer_size})',
+    'register_file_size': '.add_parameter("register_file_size", {register_file_size})',
+    'rob_size': '.add_parameter("rob_size", {rob_size})',
+    'lq_size': '.add_parameter("lq_size", {lq_size})',
+    'sq_size': '.add_parameter("sq_size", {sq_size})',
     'fetch_width': '.add_parameter("fetch_width", champsim::bandwidth::maximum_type{{{fetch_width}}})',
     'decode_width': '.add_parameter("decode_width", champsim::bandwidth::maximum_type{{{decode_width}}})',
     'dispatch_width': '.add_parameter("dispatch_width", champsim::bandwidth::maximum_type{{{dispatch_width}}})',
@@ -43,40 +43,40 @@ core_builder_parts = {
     'lq_width': '.add_parameter("lq_width", champsim::bandwidth::maximum_type{{{lq_width}}})',
     'sq_width': '.add_parameter("sq_width", champsim::bandwidth::maximum_type{{{sq_width}}})',
     'retire_width': '.add_parameter("retire_width", champsim::bandwidth::maximum_type{{{retire_width}}})',
-    'mispredict_penalty': '.add_parameter("mispredict_penalty", static_cast<unsigned>({mispredict_penalty}))',
-    'decode_latency': '.add_parameter("decode_latency", static_cast<unsigned>({decode_latency}))',
-    'dispatch_latency': '.add_parameter("dispatch_latency", static_cast<unsigned>({dispatch_latency}))',
-    'schedule_latency': '.add_parameter("schedule_latency", static_cast<unsigned>({schedule_latency}))',
-    'execute_latency': '.add_parameter("execute_latency", static_cast<unsigned>({execute_latency}))',
-    'dib_set': '  .add_parameter("dib_set", static_cast<uint32_t>({dib_set}))',
-    'dib_way': '  .add_parameter("dib_way", static_cast<uint32_t>({dib_way}))',
-    'dib_window': '  .add_parameter("dib_window", static_cast<std::size_t>({dib_window}))',
+    'mispredict_penalty': '.add_parameter("mispredict_penalty", {mispredict_penalty})',
+    'decode_latency': '.add_parameter("decode_latency", {decode_latency})',
+    'dispatch_latency': '.add_parameter("dispatch_latency", {dispatch_latency})',
+    'schedule_latency': '.add_parameter("schedule_latency", {schedule_latency})',
+    'execute_latency': '.add_parameter("execute_latency", {execute_latency})',
+    'dib_set': '  .add_parameter("dib_set", {dib_set})',
+    'dib_way': '  .add_parameter("dib_way", {dib_way})',
+    'dib_window': '  .add_parameter("dib_window", {dib_window})',
     'L1I': ['.add_parameter("l1i", {^l1i_ptr})', '.add_parameter("l1i_bandwidth", {^l1i_ptr}->get_max_tag_bandwidth())', '.add_parameter("fetch_queues", {^fetch_queues})'],
     'L1D': ['.add_parameter("l1d", {^l1d_ptr})', '.add_parameter("l1d_bandwidth", {^l1d_ptr}->get_max_tag_bandwidth())', '.add_parameter("data_queues", {^data_queues})'],
     '_branch_predictor_data': '.add_parameter("bp_impls", std::vector<std::string>{{{^branch_predictor_string}}})',
     '_btb_data': '.add_parameter("btb_impls", std::vector<std::string>{{{^btb_string}}})',
-    '_index': '.add_parameter("cpu", static_cast<uint8_t>({_index}))',
+    '_index': '.add_parameter("cpu", {_index})',
     'frequency': '.add_parameter("clock_period", champsim::chrono::picoseconds{{{^clock_period}}})'
 }
 
 dib_builder_parts = {
-    'sets': '  .add_parameter("dib_set", static_cast<uint32_t>({DIB[sets]}))',
-    'ways': '  .add_parameter("dib_way", static_cast<uint32_t>({DIB[ways]}))',
-    'window_size': '  .add_parameter("dib_window", static_cast<std::size_t>({DIB[window_size]}))'
+    'sets': '  .add_parameter("dib_set", {DIB[sets]})',
+    'ways': '  .add_parameter("dib_way", {DIB[ways]})',
+    'window_size': '  .add_parameter("dib_window", {DIB[window_size]})'
 }
 
 cache_builder_parts = {
     'size': '.add_parameter("size", champsim::data::bytes{{{size}}})',
-    'log2_size': '.add_parameter("log2_size", static_cast<uint32_t>({log2_size}))',
-    'sets': '.add_parameter("num_sets", static_cast<uint32_t>({sets}))',
-    'log2_sets': '.add_parameter("log2_sets", static_cast<uint32_t>({log2_sets}))',
-    'ways': '.add_parameter("num_ways", static_cast<uint32_t>({ways}))',
-    'log2_ways': '.add_parameter("log2_ways", static_cast<uint32_t>({log2_ways}))',
-    'pq_size': '.add_parameter("pq_size", static_cast<std::size_t>({pq_size}))',
-    'mshr_size': '.add_parameter("mshr_size", static_cast<uint32_t>({mshr_size}))',
-    'latency': '.add_parameter("latency", static_cast<uint64_t>({latency}))',
-    'hit_latency': '.add_parameter("hit_latency", static_cast<uint64_t>({hit_latency}))',
-    'fill_latency': '.add_parameter("fill_latency", static_cast<uint64_t>({fill_latency}))',
+    'log2_size': '.add_parameter("log2_size", {log2_size})',
+    'sets': '.add_parameter("num_sets", {sets})',
+    'log2_sets': '.add_parameter("log2_sets", {log2_sets})',
+    'ways': '.add_parameter("num_ways", {ways})',
+    'log2_ways': '.add_parameter("log2_ways", {log2_ways})',
+    'pq_size': '.add_parameter("pq_size", {pq_size})',
+    'mshr_size': '.add_parameter("mshr_size", {mshr_size})',
+    'latency': '.add_parameter("latency", {latency})',
+    'hit_latency': '.add_parameter("hit_latency", {hit_latency})',
+    'fill_latency': '.add_parameter("fill_latency", {fill_latency})',
     'max_tag_check': '.add_parameter("max_tag_bandwidth", champsim::bandwidth::maximum_type{{{max_tag_check}}})',
     'max_fill': '.add_parameter("max_fill_bandwidth", champsim::bandwidth::maximum_type{{{max_fill}}})',
     '_offset_bits': '.add_parameter("offset_bits", champsim::data::bits{{{_offset_bits}}})',
@@ -89,9 +89,9 @@ cache_builder_parts = {
 }
 
 ptw_builder_parts = {
-    'cpu': '.add_parameter("cpu", static_cast<uint32_t>({cpu}))',
+    'cpu': '.add_parameter("cpu", {cpu})',
     'lower_level': '.add_parameter("lower_level", {^lower_level_queues})',
-    'mshr_size': '.add_parameter("mshr_size", static_cast<uint32_t>({mshr_size}))',
+    'mshr_size': '.add_parameter("mshr_size", {mshr_size})',
     'max_read': '.add_parameter("max_tag_check", champsim::bandwidth::maximum_type{{{max_read}}})',
     'max_write': '.add_parameter("max_fill", champsim::bandwidth::maximum_type{{{max_write}}})',
     'frequency': '.add_parameter("clock_period", champsim::chrono::picoseconds{{{^clock_period}}})'

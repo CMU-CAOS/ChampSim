@@ -37,6 +37,7 @@
 #include "dram_stats.h"
 #include "bandwidth.h"
 #include <any>
+#include "util/type_traits.h"
 
 //class CACHE;
 //class O3_CPU;
@@ -59,7 +60,12 @@ struct ModuleBuilder {
       try {
         return std::any_cast<T>(it->second);
       }
-      catch(const std::bad_any_cast& caught) {
+      catch(const std::bad_any_cast&) {
+        // For arithmetic types, try converting from whatever numeric type was stored
+        T result{};
+        if (champsim::numeric_any_cast(it->second, result)) {
+          return result;
+        }
         fmt::print("[MODULE] [{}] ERROR: Casting failed while retrieving parameter {}, is your parameter type correct?\n",module_name,name);
         exit(-1);
       }
