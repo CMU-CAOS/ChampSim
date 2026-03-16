@@ -347,6 +347,7 @@ struct module_base {
     virtual uint64_t sim_cycle() const = 0;
 
     core_module(champsim::chrono::picoseconds clock_period_) : operable(clock_period_) {}
+    virtual ~core_module() = default;
 
     using stats_type = cpu_stats;
     virtual stats_type get_sim_stats() const = 0;
@@ -358,6 +359,7 @@ struct module_base {
   struct cache_module: public module_base<cache_module,environment_module>, public operable {
     //interface for cache module
     cache_module(champsim::chrono::picoseconds clock_period_) : operable(clock_period_) {}
+    virtual ~cache_module() = default;
 
     using stats_type = cache_stats;
     virtual champsim::bandwidth::maximum_type get_max_tag_bandwidth() const = 0;
@@ -394,6 +396,7 @@ struct module_base {
   struct memory_controller_module: public module_base<memory_controller_module,environment_module>, public operable {
     //interface for memory controller module
     memory_controller_module(champsim::chrono::picoseconds clock_period_) : operable(clock_period_) {}
+    virtual ~memory_controller_module() = default;
 
     using stats_type = dram_stats;
     virtual std::size_t get_num_channels() const = 0;
@@ -406,6 +409,7 @@ struct module_base {
   struct page_table_walker_module: public module_base<page_table_walker_module,environment_module>, public operable {
     //interface for page table walker module
     page_table_walker_module(champsim::chrono::picoseconds clock_period_) : operable(clock_period_) {}
+    virtual ~page_table_walker_module() = default;
   }; 
 
   struct channel_module: public module_base<channel_module,environment_module> {
@@ -440,6 +444,7 @@ struct module_base {
   }; 
 
   struct vmem_module: public module_base<vmem_module,environment_module> {
+    virtual ~vmem_module() = default;
     virtual std::size_t available_ppages() const = 0;
     virtual std::pair<champsim::page_number, champsim::chrono::clock::duration> va_to_pa(uint32_t cpu_num, champsim::page_number vaddr) = 0;
     virtual std::pair<champsim::address, champsim::chrono::clock::duration> get_pte_pa(uint32_t cpu_num, champsim::page_number vaddr, std::size_t level) = 0;
@@ -449,6 +454,8 @@ struct module_base {
   };
 
   struct prefetcher: public module_base<prefetcher,cache_module> {
+
+      virtual ~prefetcher() = default;
 
       //prefetcher initialize
       virtual void prefetcher_initialize() {}
@@ -499,6 +506,8 @@ struct module_base {
 
 
   struct replacement: public module_base<replacement,cache_module> {
+
+      virtual ~replacement() = default;
 
       //initialize replacement
       virtual void initialize_replacement() {}
@@ -552,6 +561,8 @@ struct module_base {
 
   struct branch_predictor: public module_base<branch_predictor,core_module> {
 
+    virtual ~branch_predictor() = default;
+
     //initialize branch predictor
     virtual void initialize_branch_predictor() {}
 
@@ -576,6 +587,8 @@ struct module_base {
   };
 
   struct btb: public module_base<btb,core_module> {
+
+    virtual ~btb() = default;
 
     //initialize btb
     virtual void initialize_btb() {}

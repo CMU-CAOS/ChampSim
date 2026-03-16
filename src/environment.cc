@@ -21,6 +21,7 @@
 
 #include "champsim.h"
 #include "chrono.h"
+#include "access_type.h"
 #include "bandwidth.h"
 #include "util/bits.h"
 #include "util/units.h"
@@ -29,21 +30,6 @@ using json = nlohmann::json;
 using namespace champsim::modules;
 
 namespace {
-
-// Parse prefetch_activate array ["LOAD","PREFETCH"] into access_type vector
-std::vector<access_type> parse_pref_activate(const json& j) {
-  std::vector<access_type> result;
-  if (!j.is_array()) return result;
-  for (auto& elem : j) {
-    std::string s = elem.get<std::string>();
-    if (s == "LOAD") result.push_back(access_type::LOAD);
-    else if (s == "RFO") result.push_back(access_type::RFO);
-    else if (s == "PREFETCH") result.push_back(access_type::PREFETCH);
-    else if (s == "WRITE") result.push_back(access_type::WRITE);
-    else if (s == "TRANSLATION") result.push_back(access_type::TRANSLATION);
-  }
-  return result;
-}
 
 // Split a string like "4G" into {4.0, "G"} or "32000" into {32000.0, ""}.
 std::pair<double, std::string> parse_number_and_suffix(const std::string& s) {
@@ -151,6 +137,15 @@ bool try_parse_typed_value(const json& obj, std::any& out) {
   } else if (type_key == "null") {
     std::string iface_name = val.get<std::string>();
     out = interface_registry::make_null_pointer(iface_name);
+    return true;
+  } else if (type_key == "access_types" && val.is_array()) {
+    std::vector<access_type> result;
+    for (auto& elem : val) {
+      auto at = access_type_from_string(elem.get<std::string>());
+      if (at != access_type::NUM_TYPES)
+        result.push_back(at);
+    }
+    out = result;
     return true;
   }
   return false;
@@ -261,13 +256,9 @@ champsim::environment::environment(ModuleBuilder builder)
       } else if (val.is_array()) {
         // Non-ref array: check for string arrays, numeric arrays-of-arrays, etc.
         if (!val.empty() && val[0].is_string()) {
-          if (key == "pref_activate_mask") {
-            mod_builder.add_parameter(key, parse_pref_activate(val));
-          } else {
             std::vector<std::string> sv;
             for (auto& e : val) sv.push_back(e.get<std::string>());
             mod_builder.add_parameter(key, sv);
-          }
         } else if (!val.empty() && val[0].is_array()) {
           // Array of arrays → std::array<std::array<uint32_t, 3>, 16>
           std::array<std::array<uint32_t, 3>, 16> dims{};

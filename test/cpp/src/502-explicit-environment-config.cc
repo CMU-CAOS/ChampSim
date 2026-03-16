@@ -61,7 +61,7 @@ json minimal_explicit_config() {
         "mshr_size": 64, "hit_latency": 10, "fill_latency": 10,
         "offset_bits": {"bits": "6"}, "max_tag_bandwidth": {"bandwidth": 1}, "max_fill_bandwidth": {"bandwidth": 1},
         "prefetch_as_load": false, "match_offset_bits": false, "virtual_prefetch": false,
-        "pref_activate_mask": ["LOAD", "PREFETCH"],
+        "pref_activate_mask": {"access_types": ["LOAD", "PREFETCH"]},
         "upper_levels": ["@ch_l2c_llc"], "lower_level": "@ch_llc_dram", "lower_translate": {"null": "channel"},
         "children": [
           {"name": "llc_pf", "module": "prefetcher", "model": "no"},
@@ -74,7 +74,7 @@ json minimal_explicit_config() {
         "mshr_size": 8, "hit_latency": 1, "fill_latency": 1,
         "offset_bits": {"bits": "12"}, "max_tag_bandwidth": {"bandwidth": 2}, "max_fill_bandwidth": {"bandwidth": 2},
         "prefetch_as_load": false, "match_offset_bits": false, "virtual_prefetch": false,
-        "pref_activate_mask": ["LOAD", "PREFETCH"],
+        "pref_activate_mask": {"access_types": ["LOAD", "PREFETCH"]},
         "upper_levels": ["@ch_l1d_dtlb"], "lower_level": "@ch_dtlb_stlb", "lower_translate": {"null": "channel"},
         "children": [
           {"name": "dtlb_pf", "module": "prefetcher", "model": "no"},
@@ -87,7 +87,7 @@ json minimal_explicit_config() {
         "mshr_size": 8, "hit_latency": 1, "fill_latency": 1,
         "offset_bits": {"bits": "12"}, "max_tag_bandwidth": {"bandwidth": 2}, "max_fill_bandwidth": {"bandwidth": 2},
         "prefetch_as_load": false, "match_offset_bits": false, "virtual_prefetch": true,
-        "pref_activate_mask": ["LOAD", "PREFETCH"],
+        "pref_activate_mask": {"access_types": ["LOAD", "PREFETCH"]},
         "upper_levels": ["@ch_l1i_itlb"], "lower_level": "@ch_itlb_stlb", "lower_translate": {"null": "channel"},
         "children": [
           {"name": "itlb_pf", "module": "prefetcher", "model": "no"},
@@ -100,7 +100,7 @@ json minimal_explicit_config() {
         "mshr_size": 16, "hit_latency": 2, "fill_latency": 3,
         "offset_bits": {"bits": "6"}, "max_tag_bandwidth": {"bandwidth": 2}, "max_fill_bandwidth": {"bandwidth": 2},
         "prefetch_as_load": false, "match_offset_bits": true, "virtual_prefetch": false,
-        "pref_activate_mask": ["LOAD", "PREFETCH"],
+        "pref_activate_mask": {"access_types": ["LOAD", "PREFETCH"]},
         "upper_levels": ["@ch_ptw_l1d", "@ch_core_l1d"],
         "lower_level": "@ch_l1d_l2c", "lower_translate": "@ch_l1d_dtlb",
         "children": [
@@ -114,7 +114,7 @@ json minimal_explicit_config() {
         "mshr_size": 8, "hit_latency": 2, "fill_latency": 2,
         "offset_bits": {"bits": "6"}, "max_tag_bandwidth": {"bandwidth": 2}, "max_fill_bandwidth": {"bandwidth": 2},
         "prefetch_as_load": false, "match_offset_bits": true, "virtual_prefetch": true,
-        "pref_activate_mask": ["LOAD", "PREFETCH"],
+        "pref_activate_mask": {"access_types": ["LOAD", "PREFETCH"]},
         "upper_levels": ["@ch_core_l1i"],
         "lower_level": "@ch_l1i_l2c", "lower_translate": "@ch_l1i_itlb",
         "children": [
@@ -128,7 +128,7 @@ json minimal_explicit_config() {
         "mshr_size": 32, "hit_latency": 5, "fill_latency": 5,
         "offset_bits": {"bits": "6"}, "max_tag_bandwidth": {"bandwidth": 1}, "max_fill_bandwidth": {"bandwidth": 1},
         "prefetch_as_load": false, "match_offset_bits": false, "virtual_prefetch": false,
-        "pref_activate_mask": ["LOAD", "PREFETCH"],
+        "pref_activate_mask": {"access_types": ["LOAD", "PREFETCH"]},
         "upper_levels": ["@ch_l1d_l2c", "@ch_l1i_l2c"],
         "lower_level": "@ch_l2c_llc", "lower_translate": "@ch_l2c_stlb",
         "children": [
@@ -142,7 +142,7 @@ json minimal_explicit_config() {
         "mshr_size": 16, "hit_latency": 4, "fill_latency": 4,
         "offset_bits": {"bits": "12"}, "max_tag_bandwidth": {"bandwidth": 1}, "max_fill_bandwidth": {"bandwidth": 1},
         "prefetch_as_load": false, "match_offset_bits": false, "virtual_prefetch": false,
-        "pref_activate_mask": ["LOAD", "PREFETCH"],
+        "pref_activate_mask": {"access_types": ["LOAD", "PREFETCH"]},
         "upper_levels": ["@ch_dtlb_stlb", "@ch_itlb_stlb", "@ch_l2c_stlb"],
         "lower_level": "@ch_stlb_ptw", "lower_translate": {"null": "channel"},
         "children": [
@@ -598,7 +598,7 @@ SCENARIO("Explicit environment supports multi-core via explicit module declarati
         {"offset_bits", {{"bits", std::to_string(offset_bits)}}},
         {"max_tag_bandwidth", {{"bandwidth", tag_bw}}}, {"max_fill_bandwidth", {{"bandwidth", fill_bw}}},
         {"prefetch_as_load", false}, {"match_offset_bits", match_off}, {"virtual_prefetch", virt_pf},
-        {"pref_activate_mask", json::array({"LOAD", "PREFETCH"})},
+        {"pref_activate_mask", {{"access_types", json::array({"LOAD", "PREFETCH"})}}},
         {"upper_levels", ul}, {"lower_level", "@" + ll}, {"lower_translate", lt},
         {"children", json::array({
           {{"name", pf_name}, {"module", "prefetcher"}, {"model", pf_model}},

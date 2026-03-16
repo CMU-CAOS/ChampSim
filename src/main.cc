@@ -90,8 +90,8 @@ int main(int argc, char** argv) // NOLINT(bugprone-exception-escape)
 
   // Read JSON config from file or stdin
   nlohmann::json config_json;
-  if (config_file_path == "") {
-    // Read from stdin
+  if (config_file_path == "-") {
+    // Explicit stdin request
     try {
       config_json = nlohmann::json::parse(std::cin);
     } catch (const nlohmann::json::parse_error& e) {
