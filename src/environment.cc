@@ -23,6 +23,7 @@
 #include "chrono.h"
 #include "bandwidth.h"
 #include "util/bits.h"
+#include "util/units.h"
 
 using json = nlohmann::json;
 using namespace champsim::modules;
@@ -44,7 +45,83 @@ std::vector<access_type> parse_pref_activate(const json& j) {
   return result;
 }
 
-// Try to parse a JSON object as a type-wrapped value, e.g. {"picoseconds": 250}
+// Split a string like "4G" into {4.0, "G"} or "32000" into {32000.0, ""}.
+std::pair<double, std::string> parse_number_and_suffix(const std::string& s) {
+  std::size_t pos = 0;
+  double value = std::stod(s, &pos);
+  return {value, s.substr(pos)};
+}
+
+// Parse a frequency string with SI suffix → picoseconds period.
+// Formula: ps = round(1e12 / (value * multiplier))
+champsim::chrono::picoseconds parse_frequency_string(const std::string& s) {
+  auto [value, suffix] = parse_number_and_suffix(s);
+  double multiplier = 1.0;
+  if (suffix.empty())      multiplier = 1.0;
+  else if (suffix == "K")  multiplier = 1e3;
+  else if (suffix == "M")  multiplier = 1e6;
+  else if (suffix == "G")  multiplier = 1e9;
+  else if (suffix == "T")  multiplier = 1e12;
+  else {
+    fmt::print("[EXPLICIT_ENVIRONMENT] ERROR: unknown frequency suffix '{}' in '{}'\n", suffix, s);
+    std::exit(-1);
+  }
+  auto ps = static_cast<int64_t>(std::round(1e12 / (value * multiplier)));
+  return champsim::chrono::picoseconds{ps};
+}
+
+// Parse a time string with suffix → std::any of the appropriate chrono type.
+// The suffix determines the exact stored type (must match consumer expectations).
+std::any parse_time_string(const std::string& s) {
+  auto [value, suffix] = parse_number_and_suffix(s);
+  auto int_val = static_cast<int64_t>(std::round(value));
+  if (suffix.empty() || suffix == "p")
+    return champsim::chrono::picoseconds{int_val};
+  else if (suffix == "n")
+    return champsim::chrono::nanoseconds{int_val};
+  else if (suffix == "u")
+    return champsim::chrono::microseconds{int_val};
+  else if (suffix == "m")
+    return champsim::chrono::milliseconds{int_val};
+  else if (suffix == "s")
+    return champsim::chrono::seconds{int_val};
+  fmt::print("[EXPLICIT_ENVIRONMENT] ERROR: unknown time suffix '{}' in '{}'\n", suffix, s);
+  std::exit(-1);
+}
+
+// Parse a bytes string with SI or IEC binary suffix → champsim::data::bytes.
+champsim::data::bytes parse_bytes_string(const std::string& s) {
+  auto [value, suffix] = parse_number_and_suffix(s);
+  auto int_val = static_cast<long long>(std::round(value));
+  if (suffix.empty())
+    return champsim::data::bytes{int_val};
+  // IEC binary prefixes
+  if (suffix == "Ki") return champsim::data::kibibytes{int_val};
+  if (suffix == "Mi") return champsim::data::mebibytes{int_val};
+  if (suffix == "Gi") return champsim::data::gibibytes{int_val};
+  if (suffix == "Ti") return champsim::data::tebibytes{int_val};
+  // SI decimal prefixes
+  if (suffix == "K") return champsim::data::bytes{int_val * 1000LL};
+  if (suffix == "M") return champsim::data::bytes{int_val * 1000000LL};
+  if (suffix == "G") return champsim::data::bytes{int_val * 1000000000LL};
+  if (suffix == "T") return champsim::data::bytes{int_val * 1000000000000LL};
+  fmt::print("[EXPLICIT_ENVIRONMENT] ERROR: unknown bytes suffix '{}' in '{}'\n", suffix, s);
+  std::exit(-1);
+}
+
+// Parse a bits string with SI suffix → champsim::data::bits.
+champsim::data::bits parse_bits_string(const std::string& s) {
+  auto [value, suffix] = parse_number_and_suffix(s);
+  auto int_val = static_cast<unsigned long long>(std::round(value));
+  if (suffix.empty()) return champsim::data::bits{int_val};
+  if (suffix == "K")  return champsim::data::bits{int_val * 1000ULL};
+  if (suffix == "M")  return champsim::data::bits{int_val * 1000000ULL};
+  if (suffix == "G")  return champsim::data::bits{int_val * 1000000000ULL};
+  fmt::print("[EXPLICIT_ENVIRONMENT] ERROR: unknown bits suffix '{}' in '{}'\n", suffix, s);
+  std::exit(-1);
+}
+
+// Try to parse a JSON object as a type-wrapped value, e.g. {"frequency": "4G"}
 // Returns true and sets the std::any result if recognized.
 bool try_parse_typed_value(const json& obj, std::any& out) {
   if (!obj.is_object() || obj.size() != 1) return false;
@@ -52,23 +129,17 @@ bool try_parse_typed_value(const json& obj, std::any& out) {
   const std::string& type_key = it.key();
   const json& val = it.value();
 
-  if (type_key == "picoseconds") {
-    out = champsim::chrono::picoseconds{val.get<int64_t>()};
+  if (type_key == "frequency" && val.is_string()) {
+    out = parse_frequency_string(val.get<std::string>());
     return true;
-  } else if (type_key == "microseconds") {
-    out = champsim::chrono::microseconds{val.get<int64_t>()};
+  } else if (type_key == "time" && val.is_string()) {
+    out = parse_time_string(val.get<std::string>());
     return true;
-  } else if (type_key == "frequency_mhz") {
-    out = champsim::chrono::picoseconds{static_cast<int64_t>(std::round(1000000.0 / val.get<double>()))};
+  } else if (type_key == "bytes" && val.is_string()) {
+    out = parse_bytes_string(val.get<std::string>());
     return true;
-  } else if (type_key == "frequency_ghz") {
-    out = champsim::chrono::picoseconds{static_cast<int64_t>(std::round(1000.0 / val.get<double>()))};
-    return true;
-  } else if (type_key == "bits") {
-    out = champsim::data::bits{static_cast<unsigned>(val.get<int64_t>())};
-    return true;
-  } else if (type_key == "bytes") {
-    out = champsim::data::bytes{static_cast<int>(val.get<int64_t>())};
+  } else if (type_key == "bits" && val.is_string()) {
+    out = parse_bits_string(val.get<std::string>());
     return true;
   } else if (type_key == "bandwidth") {
     out = champsim::bandwidth::maximum_type{val.get<long long>()};
@@ -78,7 +149,6 @@ bool try_parse_typed_value(const json& obj, std::any& out) {
     else out = std::optional<uint64_t>{val.get<uint64_t>()};
     return true;
   } else if (type_key == "null") {
-    // Typed null pointer: {"null": "channel"} → static_cast<channel_module*>(nullptr)
     std::string iface_name = val.get<std::string>();
     out = interface_registry::make_null_pointer(iface_name);
     return true;
@@ -172,7 +242,7 @@ champsim::environment::environment(ModuleBuilder builder)
         }
         mod_builder.add_raw_parameter(key, interface_registry::make_vector(ref_iface, refs));
       } else if (val.is_object()) {
-        // Check for type-wrapped value, e.g. {"picoseconds": 250}, {"null": "channel"}
+        // Check for type-wrapped value, e.g. {"frequency": "4G"}, {"time": "250ps"}, {"null": "channel"}
         std::any typed_val;
         if (try_parse_typed_value(val, typed_val)) {
           mod_builder.add_raw_parameter(key, std::move(typed_val));

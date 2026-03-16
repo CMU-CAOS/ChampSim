@@ -226,6 +226,81 @@ SCENARIO("Environment dump mode does not crash") {
   }
 }
 
+SCENARIO("Legacy environment dump log contains expected modules and parameters") {
+  GIVEN("A default single-core config with dump enabled") {
+    ModuleBuilder::clear_dump_log();
+    auto builder = ModuleBuilder{"dump_legacy", "DEFAULT_ENVIRONMENT",
+                                 static_cast<champsim::modules::environment_module*>(nullptr)};
+    builder.add_parameter("config_json", json::object());
+    builder.enable_dump();
+    auto* env = champsim::modules::environment_module::create_instance(builder);
+    auto& log = ModuleBuilder::get_dump_log();
+
+    THEN("The dump log contains entries for all major module types") {
+      // Core
+      REQUIRE(log.find("[cpu0]") != std::string::npos);
+      // Caches
+      REQUIRE(log.find("[cpu0_L1D]") != std::string::npos);
+      REQUIRE(log.find("[cpu0_L1I]") != std::string::npos);
+      REQUIRE(log.find("[cpu0_L2C]") != std::string::npos);
+      REQUIRE(log.find("[LLC]") != std::string::npos);
+      // TLBs
+      REQUIRE(log.find("[cpu0_DTLB]") != std::string::npos);
+      REQUIRE(log.find("[cpu0_ITLB]") != std::string::npos);
+      REQUIRE(log.find("[cpu0_STLB]") != std::string::npos);
+      // PTW and DRAM
+      REQUIRE(log.find("[cpu0_PTW]") != std::string::npos);
+      REQUIRE(log.find("[DRAM]") != std::string::npos);
+      // VMEM
+      REQUIRE(log.find("[VMEM]") != std::string::npos);
+    }
+
+    THEN("The dump log contains set parameter tags") {
+      REQUIRE(log.find("(set)") != std::string::npos);
+    }
+
+    THEN("Cache parameters are logged with correct values") {
+      // L1D should have num_sets and num_ways logged
+      auto pos = log.find("[cpu0_L1D]");
+      REQUIRE(pos != std::string::npos);
+      REQUIRE(log.find("num_sets", pos) != std::string::npos);
+      REQUIRE(log.find("num_ways", pos) != std::string::npos);
+    }
+
+    THEN("DRAM parameters are logged") {
+      auto pos = log.find("[DRAM]");
+      REQUIRE(pos != std::string::npos);
+      REQUIRE(log.find("channels", pos) != std::string::npos);
+    }
+
+    ModuleBuilder::clear_dump_log();
+  }
+
+  GIVEN("A 2-core config with dump enabled") {
+    ModuleBuilder::clear_dump_log();
+    auto builder = ModuleBuilder{"dump_legacy_2c", "DEFAULT_ENVIRONMENT",
+                                 static_cast<champsim::modules::environment_module*>(nullptr)};
+    builder.add_parameter("config_json", json({{"num_cores", 2}}));
+    builder.enable_dump();
+    auto* env = champsim::modules::environment_module::create_instance(builder);
+    auto& log = ModuleBuilder::get_dump_log();
+
+    THEN("The dump log contains entries for both cores") {
+      REQUIRE(log.find("[cpu0]") != std::string::npos);
+      REQUIRE(log.find("[cpu1]") != std::string::npos);
+    }
+
+    THEN("The dump log contains per-core caches for both cores") {
+      REQUIRE(log.find("[cpu0_L1D]") != std::string::npos);
+      REQUIRE(log.find("[cpu1_L1D]") != std::string::npos);
+      REQUIRE(log.find("[cpu0_L1I]") != std::string::npos);
+      REQUIRE(log.find("[cpu1_L1I]") != std::string::npos);
+    }
+
+    ModuleBuilder::clear_dump_log();
+  }
+}
+
 // Helpers for module access
 champsim::modules::cache_module* get_cache(champsim::modules::environment_module* env, const std::string& name) {
   for (auto& cache_ref : env->typed_view<champsim::modules::cache_module>("cache")) {
