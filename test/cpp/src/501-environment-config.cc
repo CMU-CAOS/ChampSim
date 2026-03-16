@@ -472,6 +472,36 @@ SCENARIO("PTW bandwidth propagates") {
   }
 }
 
+SCENARIO("Legacy environment propagates DIB inorder width and hit buffer size") {
+  GIVEN("A config with DIB inorder_width and hit_buffer_size") {
+    json config = {{"DIB", {{"inorder_width", 7}, {"hit_buffer_size", 48}}}};
+    auto* env = make_env(config);
+
+    auto core = env->get_builder_params("cpu0");
+    REQUIRE(core.is_valid());
+    REQUIRE(core.get_parameter<champsim::bandwidth::maximum_type>("dib_inorder_width") == champsim::bandwidth::maximum_type{7});
+    REQUIRE(core.get_parameter<uint32_t>("dib_hit_buffer_size") == 48);
+  }
+}
+
+SCENARIO("Legacy environment accepts per-core dib_ prefixed parameters") {
+  GIVEN("A config with dib_ fields under ooo_cpu and conflicting top-level dib_ fields") {
+    json config = {
+      {"dib_inorder_width", 99},
+      {"dib_hit_buffer_size", 99},
+      {"ooo_cpu", json::array({
+        {{"dib_inorder_width", 9}, {"dib_hit_buffer_size", 40}}
+      })}
+    };
+    auto* env = make_env(config);
+
+    auto core = env->get_builder_params("cpu0");
+    REQUIRE(core.is_valid());
+    REQUIRE(core.get_parameter<champsim::bandwidth::maximum_type>("dib_inorder_width") == champsim::bandwidth::maximum_type{9});
+    REQUIRE(core.get_parameter<uint32_t>("dib_hit_buffer_size") == 40);
+  }
+}
+
 SCENARIO("Environment builder parameter snooping exposes config propagation") {
   GIVEN("A config with custom L1D and PTW parameters") {
     json config = {

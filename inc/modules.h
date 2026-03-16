@@ -431,6 +431,7 @@ struct module_base {
 
     virtual std::size_t num_sets() const = 0;
     virtual std::size_t num_ways() const = 0;
+    virtual champsim::data::bits get_offset_bits() const = 0;
   };
 
   struct memory_controller_module: public module_base<memory_controller_module,environment_module>, public operable {

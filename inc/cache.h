@@ -217,6 +217,7 @@ public:
 
   [[nodiscard]] std::size_t num_sets() const { return NUM_SET; }
   [[nodiscard]] std::size_t num_ways() const { return NUM_WAY; }
+  [[nodiscard]] champsim::data::bits get_offset_bits() const final { return OFFSET_BITS; }
 
   [[deprecated("Use get_set_index() instead.")]] [[nodiscard]] uint64_t get_set(uint64_t address) const;
   [[deprecated("This function should not be used to access the blocks directly.")]] [[nodiscard]] uint64_t get_way(uint64_t address, uint64_t set) const;

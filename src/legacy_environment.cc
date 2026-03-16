@@ -173,6 +173,18 @@ void json_bandwidth(ModuleBuilder& builder, const json& j,
     builder.add_parameter(param_name, champsim::bandwidth::maximum_type{j[json_key].get<long long>()});
 }
 
+void json_bandwidth_or_wrapped(ModuleBuilder& builder, const json& j,
+                               const std::string& json_key, const std::string& param_name) {
+  if (!j.contains(json_key))
+    return;
+
+  const auto& v = j.at(json_key);
+  if (v.is_object() && v.contains("bandwidth"))
+    builder.add_parameter(param_name, champsim::bandwidth::maximum_type{v.at("bandwidth").get<long long>()});
+  else
+    builder.add_parameter(param_name, champsim::bandwidth::maximum_type{v.get<long long>()});
+}
+
 // Struct to hold info about a cache before construction
 struct cache_config {
   std::string name;
@@ -749,7 +761,18 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
       json_bandwidth(core_builder, cc.config, key, key);
     json_bandwidth(core_builder, cc.config, "scheduler_size", "schedule_width");
     // DIB parameters (from separate dib_json, not core config)
-    add_json_params(core_builder, dib_json, {{"sets", "dib_set"}, {"ways", "dib_way"}, {"window_size", "dib_window"}});
+    add_json_params(core_builder, dib_json,
+                    {{"sets", "dib_set"},
+                     {"ways", "dib_way"},
+                     {"window_size", "dib_window"},
+                     {"hit_buffer_size", "dib_hit_buffer_size"},
+                     {"dib_hit_buffer_size", "dib_hit_buffer_size"}});
+    json_bandwidth_or_wrapped(core_builder, dib_json, "inorder_width", "dib_inorder_width");
+    json_bandwidth_or_wrapped(core_builder, dib_json, "dib_inorder_width", "dib_inorder_width");
+
+    // Also accept DIB parameters directly in each core config when they use the "dib_" prefix.
+    // These override values from the legacy "DIB" object when both are present.
+    json_bandwidth_or_wrapped(core_builder, cc.config, "dib_inorder_width", "dib_inorder_width");
 
     builder_params_[cc.name] = core_builder;
     cores.push_back(module_base<core_module, environment_module>::create_instance(core_builder));
