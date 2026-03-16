@@ -219,22 +219,22 @@ public:
         L1D_BANDWIDTH(builder.get_parameter<champsim::bandwidth::maximum_type>("l1d_bandwidth")), IN_QUEUE_SIZE(2 * champsim::to_underlying(builder.get_parameter<champsim::bandwidth::maximum_type>("fetch_width"))), L1I_bus(builder.get_parameter<uint8_t>("cpu"), builder.get_parameter<champsim::modules::channel_module*>("fetch_queues")),
         L1D_bus(builder.get_parameter<uint8_t>("cpu"), builder.get_parameter<champsim::modules::channel_module*>("data_queues")), l1i(builder.get_parameter<champsim::modules::cache_module*>("l1i"))
   {
-    if(std::size(builder.get_parameter<std::vector<std::string>>("bp_impls")) == 0) {
+    if(std::size(builder.get_parameter<std::vector<std::string>>("branch_predictor_modules")) == 0) {
       fmt::print("[CPU {}] WARNING: No branch predictor modules specified, using hashed perceptron\n",cpu);
-      builder.add_parameter<std::vector<std::string>>("bp_impls", {"hashed_perceptron"});
+      builder.add_parameter<std::vector<std::string>>("branch_predictor_modules", {"hashed_perceptron"});
     }
-    if(std::size(builder.get_parameter<std::vector<std::string>>("btb_impls")) == 0) {
+    if(std::size(builder.get_parameter<std::vector<std::string>>("btb_modules")) == 0) {
       fmt::print("[CPU {}] WARNING: No btb modules specified, using basic_btb\n",cpu);
-      builder.add_parameter<std::vector<std::string>>("btb_impls", {"basic_btb"});
+      builder.add_parameter<std::vector<std::string>>("btb_modules", {"basic_btb"});
     }
-    auto bp_params = builder.get_parameter<champsim::modules::ModuleBuilder::nested_params_type>("bp_params", true);
+    auto bp_params = builder.get_parameter<champsim::modules::ModuleBuilder::nested_params_type>("branch_predictor_params", true);
     auto btb_params = builder.get_parameter<champsim::modules::ModuleBuilder::nested_params_type>("btb_params", true);
-    for(auto s : builder.get_parameter<std::vector<std::string>>("bp_impls")) {
+    for(auto s : builder.get_parameter<std::vector<std::string>>("branch_predictor_modules")) {
       auto nested = champsim::modules::ModuleBuilder{builder.get_name()+s,s,static_cast<champsim::modules::core_module*>(this)};
       nested.apply_nested_params(bp_params);
       branch_module_pimpl.push_back(champsim::modules::branch_predictor::create_instance(nested));
     }
-    for(auto s : builder.get_parameter<std::vector<std::string>>("btb_impls")) {
+    for(auto s : builder.get_parameter<std::vector<std::string>>("btb_modules")) {
       auto nested = champsim::modules::ModuleBuilder{builder.get_name()+s,s,static_cast<champsim::modules::core_module*>(this)};
       nested.apply_nested_params(btb_params);
       btb_module_pimpl.push_back(champsim::modules::btb::create_instance(nested));

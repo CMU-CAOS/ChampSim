@@ -3,12 +3,15 @@
  * Reads a hierarchical JSON configuration where each module explicitly specifies
  * its name, interface type ("module"), and model ("model"). References to other
  * modules use "@name" syntax and are resolved in declaration order.
+ *
+ * This implementation is fully generic: no interface types or module names are
+ * hardcoded. Any registered interface and model will work without alteration.
  */
 
 #include "environment.h"
 
 #include <algorithm>
-#include <array>
+#include <cmath>
 #include <map>
 #include <string>
 #include <vector>
@@ -55,6 +58,12 @@ bool try_parse_typed_value(const json& obj, std::any& out) {
   } else if (type_key == "microseconds") {
     out = champsim::chrono::microseconds{val.get<int64_t>()};
     return true;
+  } else if (type_key == "frequency_mhz") {
+    out = champsim::chrono::picoseconds{static_cast<int64_t>(std::round(1000000.0 / val.get<double>()))};
+    return true;
+  } else if (type_key == "frequency_ghz") {
+    out = champsim::chrono::picoseconds{static_cast<int64_t>(std::round(1000.0 / val.get<double>()))};
+    return true;
   } else if (type_key == "bits") {
     out = champsim::data::bits{static_cast<unsigned>(val.get<int64_t>())};
     return true;
@@ -67,6 +76,11 @@ bool try_parse_typed_value(const json& obj, std::any& out) {
   } else if (type_key == "optional_uint64") {
     if (val.is_null()) out = std::optional<uint64_t>{};
     else out = std::optional<uint64_t>{val.get<uint64_t>()};
+    return true;
+  } else if (type_key == "null") {
+    // Typed null pointer: {"null": "channel"} → static_cast<channel_module*>(nullptr)
+    std::string iface_name = val.get<std::string>();
+    out = interface_registry::make_null_pointer(iface_name);
     return true;
   }
   return false;
@@ -121,20 +135,11 @@ champsim::environment::environment(ModuleBuilder builder)
 
     // Process all JSON parameters (skip reserved keys)
     for (auto& [key, val] : child.items()) {
-      if (key == "name" || key == "module" || key == "model" || key == "children") continue;
+      if (key == "name" || key == "module" || key == "model" || key == "children" || key == "_comment") continue;
 
       if (val.is_null()) {
-        // Null module pointer: determine type from known parameter names
-        if (key == "lower_level" || key == "lower_translate" ||
-            key == "fetch_queues" || key == "data_queues") {
-          mod_builder.add_parameter(key, static_cast<channel_module*>(nullptr));
-        } else if (key == "l1i" || key == "l1d") {
-          mod_builder.add_parameter(key, static_cast<cache_module*>(nullptr));
-        } else if (key == "vmem") {
-          mod_builder.add_parameter(key, static_cast<vmem_module*>(nullptr));
-        } else if (key == "dram") {
-          mod_builder.add_parameter(key, static_cast<memory_controller_module*>(nullptr));
-        }
+        // Null value: skip — modules should use optional defaults for nullable params
+        continue;
       } else if (val.is_string() && is_ref(val.get<std::string>())) {
         // Single @-reference: resolve to pointer
         std::string rn = ref_name(val.get<std::string>());
@@ -167,7 +172,7 @@ champsim::environment::environment(ModuleBuilder builder)
         }
         mod_builder.add_raw_parameter(key, interface_registry::make_vector(ref_iface, refs));
       } else if (val.is_object()) {
-        // Check for type-wrapped value, e.g. {"picoseconds": 250}
+        // Check for type-wrapped value, e.g. {"picoseconds": 250}, {"null": "channel"}
         std::any typed_val;
         if (try_parse_typed_value(val, typed_val)) {
           mod_builder.add_raw_parameter(key, std::move(typed_val));
@@ -182,7 +187,6 @@ champsim::environment::environment(ModuleBuilder builder)
       } else if (val.is_number_float()) {
         mod_builder.add_parameter(key, val.get<double>());
       } else if (val.is_string()) {
-        // Special handling for pref_activate_mask as comma-separated string
         mod_builder.add_parameter(key, val.get<std::string>());
       } else if (val.is_array()) {
         // Non-ref array: check for string arrays, numeric arrays-of-arrays, etc.
@@ -194,8 +198,8 @@ champsim::environment::environment(ModuleBuilder builder)
             for (auto& e : val) sv.push_back(e.get<std::string>());
             mod_builder.add_parameter(key, sv);
           }
-        } else if (key == "pscl_dims" && !val.empty() && val[0].is_array()) {
-          // Array of [level, set, way] triples → std::array<std::array<uint32_t, 3>, 16>
+        } else if (!val.empty() && val[0].is_array()) {
+          // Array of arrays → std::array<std::array<uint32_t, 3>, 16>
           std::array<std::array<uint32_t, 3>, 16> dims{};
           for (std::size_t i = 0; i < val.size() && i < 16; i++) {
             for (std::size_t j = 0; j < val[i].size() && j < 3; j++) {
@@ -209,13 +213,10 @@ champsim::environment::environment(ModuleBuilder builder)
       }
     }
 
-    // Handle nested children: extract sub-module declarations for the parent module
+    // Handle nested children generically: group by interface type
     if (child.contains("children")) {
-      // Group children by interface type
-      std::vector<std::string> prefetcher_models, replacement_models;
-      std::vector<std::string> bp_models, btb_models;
-      ModuleBuilder::nested_params_type prefetcher_params, replacement_params;
-      ModuleBuilder::nested_params_type bp_params, btb_params;
+      std::map<std::string, std::vector<std::string>> child_models_by_iface;
+      std::map<std::string, ModuleBuilder::nested_params_type> child_params_by_iface;
 
       for (auto& sub : child["children"]) {
         std::string sub_iface = sub["module"].get<std::string>();
@@ -231,36 +232,15 @@ champsim::environment::environment(ModuleBuilder builder)
           else if (sv.is_string()) extra[sk] = sv.get<std::string>();
         }
 
-        if (sub_iface == "prefetcher") {
-          prefetcher_models.push_back(sub_model);
-          if (!extra.empty()) prefetcher_params[sub_model] = extra;
-        } else if (sub_iface == "replacement") {
-          replacement_models.push_back(sub_model);
-          if (!extra.empty()) replacement_params[sub_model] = extra;
-        } else if (sub_iface == "branch_predictor") {
-          bp_models.push_back(sub_model);
-          if (!extra.empty()) bp_params[sub_model] = extra;
-        } else if (sub_iface == "btb") {
-          btb_models.push_back(sub_model);
-          if (!extra.empty()) btb_params[sub_model] = extra;
-        }
+        child_models_by_iface[sub_iface].push_back(sub_model);
+        if (!extra.empty()) child_params_by_iface[sub_iface][sub_model] = extra;
       }
 
-      if (!prefetcher_models.empty()) {
-        mod_builder.add_parameter("prefetcher_modules", prefetcher_models);
-        mod_builder.add_parameter("prefetcher_params", prefetcher_params);
-      }
-      if (!replacement_models.empty()) {
-        mod_builder.add_parameter("replacement_modules", replacement_models);
-        mod_builder.add_parameter("replacement_params", replacement_params);
-      }
-      if (!bp_models.empty()) {
-        mod_builder.add_parameter("bp_impls", bp_models);
-        mod_builder.add_parameter("bp_params", bp_params);
-      }
-      if (!btb_models.empty()) {
-        mod_builder.add_parameter("btb_impls", btb_models);
-        mod_builder.add_parameter("btb_params", btb_params);
+      for (auto& [child_iface, models] : child_models_by_iface) {
+        mod_builder.add_parameter(child_iface + "_modules", models);
+        if (child_params_by_iface.count(child_iface)) {
+          mod_builder.add_parameter(child_iface + "_params", child_params_by_iface[child_iface]);
+        }
       }
     }
 
@@ -270,67 +250,36 @@ champsim::environment::environment(ModuleBuilder builder)
     module_interfaces_[name] = iface;
     builder_params_[name] = mod_builder;
 
-    // Store in the appropriate collection
-    if (iface == "channel") {
-      channels_.push_back(std::any_cast<channel_module*>(typed_ptr));
-    } else if (iface == "cache") {
-      caches_.push_back(std::any_cast<cache_module*>(typed_ptr));
-    } else if (iface == "memory_controller") {
-      if (DRAM_ != nullptr) {
-        fmt::print("[EXPLICIT_ENVIRONMENT] ERROR: multiple memory_controller modules declared (duplicate: '{}')\n", name);
-        std::exit(-1);
-      }
-      DRAM_ = std::any_cast<memory_controller_module*>(typed_ptr);
-    } else if (iface == "vmem") {
-      vmem_ = std::any_cast<vmem_module*>(typed_ptr);
-    } else if (iface == "page_table_walker") {
-      ptws_.push_back(std::any_cast<page_table_walker_module*>(typed_ptr));
-    } else if (iface == "core") {
-      cores_.push_back(std::any_cast<core_module*>(typed_ptr));
-    }
+    // Store in the type-indexed collection
+    modules_by_type_[iface].push_back(typed_ptr);
+    module_order_.emplace_back(name, iface);
   }
 
-  num_cpus_ = cores_.size();
+  // Count cores for num_cpus
+  auto it = modules_by_type_.find("core");
+  if (it != modules_by_type_.end()) {
+    num_cpus_ = it->second.size();
+  }
 }
 
-// ====== View functions ======
+// ====== Generic view function ======
 
-auto champsim::environment::cpu_view() -> std::vector<std::reference_wrapper<champsim::modules::core_module>>
+auto champsim::environment::view(const std::string& interface_type) const -> std::vector<std::any>
 {
-  std::vector<std::reference_wrapper<champsim::modules::core_module>> retval;
-  auto make_ref = [](auto* x) { return std::ref(*x); };
-  std::transform(std::begin(cores_), std::end(cores_), std::back_inserter(retval), make_ref);
-  return retval;
-}
+  if (interface_type == "operable") {
+    // Aggregate all operable modules in declaration order
+    std::vector<std::any> result;
+    for (auto& [name, iface] : module_order_) {
+      auto to_op = interface_registry::get_to_operable(iface);
+      if (to_op) {
+        auto& typed_ptr = modules_by_name_.at(name);
+        result.push_back(static_cast<champsim::operable*>(to_op(typed_ptr)));
+      }
+    }
+    return result;
+  }
 
-auto champsim::environment::cache_view() -> std::vector<std::reference_wrapper<champsim::modules::cache_module>>
-{
-  std::vector<std::reference_wrapper<champsim::modules::cache_module>> retval;
-  auto make_ref = [](auto* x) { return std::ref(*x); };
-  std::transform(std::begin(caches_), std::end(caches_), std::back_inserter(retval), make_ref);
-  return retval;
-}
-
-auto champsim::environment::ptw_view() -> std::vector<std::reference_wrapper<champsim::modules::page_table_walker_module>>
-{
-  std::vector<std::reference_wrapper<champsim::modules::page_table_walker_module>> retval;
-  auto make_ref = [](auto* x) { return std::ref(*x); };
-  std::transform(std::begin(ptws_), std::end(ptws_), std::back_inserter(retval), make_ref);
-  return retval;
-}
-
-auto champsim::environment::dram_view() -> champsim::modules::memory_controller_module&
-{
-  return *DRAM_;
-}
-
-auto champsim::environment::operable_view() -> std::vector<std::reference_wrapper<champsim::operable>>
-{
-  std::vector<std::reference_wrapper<champsim::operable>> retval;
-  auto make_ref = [](auto* x) { return std::ref<champsim::operable>(*x); };
-  std::transform(std::begin(cores_), std::end(cores_), std::back_inserter(retval), make_ref);
-  std::transform(std::begin(caches_), std::end(caches_), std::back_inserter(retval), make_ref);
-  std::transform(std::begin(ptws_), std::end(ptws_), std::back_inserter(retval), make_ref);
-  retval.push_back(std::ref<champsim::operable>(*DRAM_));
-  return retval;
+  auto it = modules_by_type_.find(interface_type);
+  if (it == modules_by_type_.end()) return {};
+  return it->second;
 }

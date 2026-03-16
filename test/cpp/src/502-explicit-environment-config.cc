@@ -62,7 +62,7 @@ json minimal_explicit_config() {
         "offset_bits": {"bits": 6}, "max_tag_bandwidth": {"bandwidth": 1}, "max_fill_bandwidth": {"bandwidth": 1},
         "prefetch_as_load": false, "match_offset_bits": false, "virtual_prefetch": false,
         "pref_activate_mask": ["LOAD", "PREFETCH"],
-        "upper_levels": ["@ch_l2c_llc"], "lower_level": "@ch_llc_dram", "lower_translate": null,
+        "upper_levels": ["@ch_l2c_llc"], "lower_level": "@ch_llc_dram", "lower_translate": {"null": "channel"},
         "children": [
           {"name": "llc_pf", "module": "prefetcher", "model": "no"},
           {"name": "llc_repl", "module": "replacement", "model": "lru"}
@@ -75,7 +75,7 @@ json minimal_explicit_config() {
         "offset_bits": {"bits": 12}, "max_tag_bandwidth": {"bandwidth": 2}, "max_fill_bandwidth": {"bandwidth": 2},
         "prefetch_as_load": false, "match_offset_bits": false, "virtual_prefetch": false,
         "pref_activate_mask": ["LOAD", "PREFETCH"],
-        "upper_levels": ["@ch_l1d_dtlb"], "lower_level": "@ch_dtlb_stlb", "lower_translate": null,
+        "upper_levels": ["@ch_l1d_dtlb"], "lower_level": "@ch_dtlb_stlb", "lower_translate": {"null": "channel"},
         "children": [
           {"name": "dtlb_pf", "module": "prefetcher", "model": "no"},
           {"name": "dtlb_repl", "module": "replacement", "model": "lru"}
@@ -88,7 +88,7 @@ json minimal_explicit_config() {
         "offset_bits": {"bits": 12}, "max_tag_bandwidth": {"bandwidth": 2}, "max_fill_bandwidth": {"bandwidth": 2},
         "prefetch_as_load": false, "match_offset_bits": false, "virtual_prefetch": true,
         "pref_activate_mask": ["LOAD", "PREFETCH"],
-        "upper_levels": ["@ch_l1i_itlb"], "lower_level": "@ch_itlb_stlb", "lower_translate": null,
+        "upper_levels": ["@ch_l1i_itlb"], "lower_level": "@ch_itlb_stlb", "lower_translate": {"null": "channel"},
         "children": [
           {"name": "itlb_pf", "module": "prefetcher", "model": "no"},
           {"name": "itlb_repl", "module": "replacement", "model": "lru"}
@@ -144,7 +144,7 @@ json minimal_explicit_config() {
         "prefetch_as_load": false, "match_offset_bits": false, "virtual_prefetch": false,
         "pref_activate_mask": ["LOAD", "PREFETCH"],
         "upper_levels": ["@ch_dtlb_stlb", "@ch_itlb_stlb", "@ch_l2c_stlb"],
-        "lower_level": "@ch_stlb_ptw", "lower_translate": null,
+        "lower_level": "@ch_stlb_ptw", "lower_translate": {"null": "channel"},
         "children": [
           {"name": "stlb_pf", "module": "prefetcher", "model": "no"},
           {"name": "stlb_repl", "module": "replacement", "model": "lru"}
@@ -183,14 +183,14 @@ champsim::modules::environment_module* make_explicit_env(const json& config) {
 
 // Helpers for module access by name
 champsim::modules::cache_module* get_cache(champsim::modules::environment_module* env, const std::string& name) {
-  for (auto& cache_ref : env->cache_view()) {
+  for (auto& cache_ref : env->typed_view<champsim::modules::cache_module>("cache")) {
     if (cache_ref.get().NAME == name)
       return &cache_ref.get();
   }
   return nullptr;
 }
 champsim::modules::page_table_walker_module* get_ptw(champsim::modules::environment_module* env, const std::string& name) {
-  for (auto& ptw_ref : env->ptw_view()) {
+  for (auto& ptw_ref : env->typed_view<champsim::modules::page_table_walker_module>("page_table_walker")) {
     if (ptw_ref.get().NAME == name)
       return &ptw_ref.get();
   }
@@ -216,19 +216,21 @@ SCENARIO("Explicit environment constructs correct topology from minimal config")
       REQUIRE(env->get_page_size() == 4096);
     }
     THEN("cpu_view has 1 core") {
-      REQUIRE(env->cpu_view().size() == 1);
+      REQUIRE(env->typed_view<champsim::modules::core_module>("core").size() == 1);
     }
     THEN("ptw_view has 1 PTW") {
-      REQUIRE(env->ptw_view().size() == 1);
+      REQUIRE(env->typed_view<champsim::modules::page_table_walker_module>("page_table_walker").size() == 1);
     }
     THEN("cache_view has 7 caches (LLC + DTLB + ITLB + L1D + L1I + L2C + STLB)") {
-      REQUIRE(env->cache_view().size() == 7);
+      REQUIRE(env->typed_view<champsim::modules::cache_module>("cache").size() == 7);
     }
     THEN("operable_view has 1 core + 7 caches + 1 PTW + 1 DRAM = 10") {
-      REQUIRE(env->operable_view().size() == 10);
+      REQUIRE(env->typed_view<champsim::operable>("operable").size() == 10);
     }
     THEN("dram_view returns a valid memory controller") {
-      auto& dram = env->dram_view();
+      auto drams = env->typed_view<champsim::modules::memory_controller_module>("memory_controller");
+      REQUIRE(drams.size() >= 1);
+      auto& dram = drams.front().get();
       REQUIRE(dram.get_num_channels() >= 1);
     }
   }
@@ -363,13 +365,13 @@ SCENARIO("Explicit environment propagates nested children as module lists") {
       REQUIRE(pf.size() == 1);
       REQUIRE(pf[0] == "spp_dev");
     }
-    THEN("cpu0 core builder has bp_impls=['bimodal'] and btb_impls=['basic_btb']") {
+    THEN("cpu0 core builder has branch_predictor_modules=['bimodal'] and btb_modules=['basic_btb']") {
       auto core_builder = env->get_builder_params("cpu0");
       REQUIRE(core_builder.is_valid());
-      auto bp = core_builder.get_parameter<std::vector<std::string>>("bp_impls");
+      auto bp = core_builder.get_parameter<std::vector<std::string>>("branch_predictor_modules");
       REQUIRE(bp.size() == 1);
       REQUIRE(bp[0] == "bimodal");
-      auto btb = core_builder.get_parameter<std::vector<std::string>>("btb_impls");
+      auto btb = core_builder.get_parameter<std::vector<std::string>>("btb_modules");
       REQUIRE(btb.size() == 1);
       REQUIRE(btb[0] == "basic_btb");
     }
@@ -384,7 +386,7 @@ SCENARIO("Explicit environment correctly parses type-wrapped values") {
     auto* env = make_explicit_env(config);
 
     THEN("DRAM has 1 channel (from integer parameter)") {
-      REQUIRE(env->dram_view().get_num_channels() == 1);
+      REQUIRE(env->typed_view<champsim::modules::memory_controller_module>("memory_controller").front().get().get_num_channels() == 1);
     }
     THEN("LLC MSHR size is 64") {
       auto* llc = (CACHE*)get_cache(env, "LLC");
@@ -540,16 +542,18 @@ SCENARIO("Explicit environment supports multi-core via explicit module declarati
       ch.push_back(c);
     };
 
+    json null_channel = {{"null", "channel"}};
+
     // LLC (shared, both L2Cs feed into it)
     add_cache("LLC", 2048, 16, 32, 64, 10, 10, 6, 1, 1, false, false,
-              json::array({"@ch0_l2c_llc", "@ch1_l2c_llc"}), "ch0_llc_dram", nullptr,
+              json::array({"@ch0_l2c_llc", "@ch1_l2c_llc"}), "ch0_llc_dram", null_channel,
               "no", "lru", "llc_pf", "llc_repl");
 
     // Core 0 caches
     add_cache("cpu0_DTLB", 16, 4, 0, 8, 1, 1, 12, 2, 2, false, false,
-              json::array({"@ch0_l1d_dtlb"}), "ch0_dtlb_stlb", nullptr, "no", "lru", "c0dtlb_pf", "c0dtlb_repl");
+              json::array({"@ch0_l1d_dtlb"}), "ch0_dtlb_stlb", null_channel, "no", "lru", "c0dtlb_pf", "c0dtlb_repl");
     add_cache("cpu0_ITLB", 16, 4, 0, 8, 1, 1, 12, 2, 2, true, false,
-              json::array({"@ch0_l1i_itlb"}), "ch0_itlb_stlb", nullptr, "no", "lru", "c0itlb_pf", "c0itlb_repl");
+              json::array({"@ch0_l1i_itlb"}), "ch0_itlb_stlb", null_channel, "no", "lru", "c0itlb_pf", "c0itlb_repl");
     add_cache("cpu0_L1D", 64, 12, 8, 16, 2, 3, 6, 2, 2, false, true,
               json::array({"@ch0_ptw_l1d", "@ch0_core_l1d"}), "ch0_l1d_l2c", "@ch0_l1d_dtlb", "no", "lru", "c0l1d_pf", "c0l1d_repl");
     add_cache("cpu0_L1I", 64, 8, 32, 8, 2, 2, 6, 2, 2, true, true,
@@ -557,13 +561,13 @@ SCENARIO("Explicit environment supports multi-core via explicit module declarati
     add_cache("cpu0_L2C", 1024, 8, 16, 32, 5, 5, 6, 1, 1, false, false,
               json::array({"@ch0_l1d_l2c", "@ch0_l1i_l2c"}), "ch0_l2c_llc", "@ch0_l2c_stlb", "spp_dev", "lru", "c0l2c_pf", "c0l2c_repl");
     add_cache("cpu0_STLB", 128, 12, 0, 16, 4, 4, 12, 1, 1, false, false,
-              json::array({"@ch0_dtlb_stlb", "@ch0_itlb_stlb", "@ch0_l2c_stlb"}), "ch0_stlb_ptw", nullptr, "no", "lru", "c0stlb_pf", "c0stlb_repl");
+              json::array({"@ch0_dtlb_stlb", "@ch0_itlb_stlb", "@ch0_l2c_stlb"}), "ch0_stlb_ptw", null_channel, "no", "lru", "c0stlb_pf", "c0stlb_repl");
 
     // Core 1 caches
     add_cache("cpu1_DTLB", 16, 4, 0, 8, 1, 1, 12, 2, 2, false, false,
-              json::array({"@ch1_l1d_dtlb"}), "ch1_dtlb_stlb", nullptr, "no", "lru", "c1dtlb_pf", "c1dtlb_repl");
+              json::array({"@ch1_l1d_dtlb"}), "ch1_dtlb_stlb", null_channel, "no", "lru", "c1dtlb_pf", "c1dtlb_repl");
     add_cache("cpu1_ITLB", 16, 4, 0, 8, 1, 1, 12, 2, 2, true, false,
-              json::array({"@ch1_l1i_itlb"}), "ch1_itlb_stlb", nullptr, "no", "lru", "c1itlb_pf", "c1itlb_repl");
+              json::array({"@ch1_l1i_itlb"}), "ch1_itlb_stlb", null_channel, "no", "lru", "c1itlb_pf", "c1itlb_repl");
     add_cache("cpu1_L1D", 64, 12, 8, 16, 2, 3, 6, 2, 2, false, true,
               json::array({"@ch1_ptw_l1d", "@ch1_core_l1d"}), "ch1_l1d_l2c", "@ch1_l1d_dtlb", "no", "lru", "c1l1d_pf", "c1l1d_repl");
     add_cache("cpu1_L1I", 64, 8, 32, 8, 2, 2, 6, 2, 2, true, true,
@@ -571,7 +575,7 @@ SCENARIO("Explicit environment supports multi-core via explicit module declarati
     add_cache("cpu1_L2C", 1024, 8, 16, 32, 5, 5, 6, 1, 1, false, false,
               json::array({"@ch1_l1d_l2c", "@ch1_l1i_l2c"}), "ch1_l2c_llc", "@ch1_l2c_stlb", "spp_dev", "lru", "c1l2c_pf", "c1l2c_repl");
     add_cache("cpu1_STLB", 128, 12, 0, 16, 4, 4, 12, 1, 1, false, false,
-              json::array({"@ch1_dtlb_stlb", "@ch1_itlb_stlb", "@ch1_l2c_stlb"}), "ch1_stlb_ptw", nullptr, "no", "lru", "c1stlb_pf", "c1stlb_repl");
+              json::array({"@ch1_dtlb_stlb", "@ch1_itlb_stlb", "@ch1_l2c_stlb"}), "ch1_stlb_ptw", null_channel, "no", "lru", "c1stlb_pf", "c1stlb_repl");
 
     // Helper lambda to add a core
     auto add_core = [&](const std::string& name, int cpu_id,
@@ -608,16 +612,16 @@ SCENARIO("Explicit environment supports multi-core via explicit module declarati
       REQUIRE(env->get_num_cpus() == 2);
     }
     THEN("cpu_view has 2 cores") {
-      REQUIRE(env->cpu_view().size() == 2);
+      REQUIRE(env->typed_view<champsim::modules::core_module>("core").size() == 2);
     }
     THEN("ptw_view has 2 PTWs") {
-      REQUIRE(env->ptw_view().size() == 2);
+      REQUIRE(env->typed_view<champsim::modules::page_table_walker_module>("page_table_walker").size() == 2);
     }
     THEN("cache_view has 13 caches (LLC + 6 per-core * 2)") {
-      REQUIRE(env->cache_view().size() == 13);
+      REQUIRE(env->typed_view<champsim::modules::cache_module>("cache").size() == 13);
     }
     THEN("operable_view has 2 cores + 13 caches + 2 PTWs + 1 DRAM = 18") {
-      REQUIRE(env->operable_view().size() == 18);
+      REQUIRE(env->typed_view<champsim::operable>("operable").size() == 18);
     }
   }
 }

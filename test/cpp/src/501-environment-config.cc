@@ -32,17 +32,17 @@ SCENARIO("Environment with default (empty) config produces correct topology") {
       REQUIRE(env->get_page_size() == 4096);
     }
     THEN("cpu_view has 1 core") {
-      REQUIRE(env->cpu_view().size() == 1);
+      REQUIRE(env->typed_view<champsim::modules::core_module>("core").size() == 1);
     }
     THEN("ptw_view has 1 PTW") {
-      REQUIRE(env->ptw_view().size() == 1);
+      REQUIRE(env->typed_view<champsim::modules::page_table_walker_module>("page_table_walker").size() == 1);
     }
     THEN("cache_view has 7 caches (LLC + 6 per-core)") {
       // LLC, DTLB, ITLB, L1D, L1I, L2C, STLB
-      REQUIRE(env->cache_view().size() == 7);
+      REQUIRE(env->typed_view<champsim::modules::cache_module>("cache").size() == 7);
     }
     THEN("operable_view has 1 core + 7 caches + 1 PTW + 1 DRAM = 10") {
-      REQUIRE(env->operable_view().size() == 10);
+      REQUIRE(env->typed_view<champsim::operable>("operable").size() == 10);
     }
   }
 }
@@ -56,16 +56,16 @@ SCENARIO("Environment with multi-core config") {
       REQUIRE(env->get_num_cpus() == 2);
     }
     THEN("cpu_view has 2 cores") {
-      REQUIRE(env->cpu_view().size() == 2);
+      REQUIRE(env->typed_view<champsim::modules::core_module>("core").size() == 2);
     }
     THEN("ptw_view has 2 PTWs") {
-      REQUIRE(env->ptw_view().size() == 2);
+      REQUIRE(env->typed_view<champsim::modules::page_table_walker_module>("page_table_walker").size() == 2);
     }
     THEN("cache_view has 13 caches (LLC + 6 per-core * 2)") {
-      REQUIRE(env->cache_view().size() == 13);
+      REQUIRE(env->typed_view<champsim::modules::cache_module>("cache").size() == 13);
     }
     THEN("operable_view has 2 cores + 13 caches + 2 PTWs + 1 DRAM = 18") {
-      REQUIRE(env->operable_view().size() == 18);
+      REQUIRE(env->typed_view<champsim::operable>("operable").size() == 18);
     }
   }
 }
@@ -79,13 +79,13 @@ SCENARIO("Environment with num_cores=4") {
       REQUIRE(env->get_num_cpus() == 4);
     }
     THEN("cpu_view has 4 cores") {
-      REQUIRE(env->cpu_view().size() == 4);
+      REQUIRE(env->typed_view<champsim::modules::core_module>("core").size() == 4);
     }
     THEN("ptw_view has 4 PTWs") {
-      REQUIRE(env->ptw_view().size() == 4);
+      REQUIRE(env->typed_view<champsim::modules::page_table_walker_module>("page_table_walker").size() == 4);
     }
     THEN("cache_view has 25 caches (LLC + 6 per-core * 4)") {
-      REQUIRE(env->cache_view().size() == 25);
+      REQUIRE(env->typed_view<champsim::modules::cache_module>("cache").size() == 25);
     }
   }
 }
@@ -141,7 +141,7 @@ SCENARIO("Environment with explicit per-core ooo_cpu config") {
       REQUIRE(env->get_num_cpus() == 2);
     }
     THEN("cpu_view has 2 cores") {
-      REQUIRE(env->cpu_view().size() == 2);
+      REQUIRE(env->typed_view<champsim::modules::core_module>("core").size() == 2);
     }
   }
 }
@@ -158,7 +158,7 @@ SCENARIO("Environment with single ooo_cpu entry duplicated across cores") {
       REQUIRE(env->get_num_cpus() == 3);
     }
     THEN("All 3 cores are created") {
-      REQUIRE(env->cpu_view().size() == 3);
+      REQUIRE(env->typed_view<champsim::modules::core_module>("core").size() == 3);
     }
   }
 }
@@ -168,7 +168,9 @@ SCENARIO("Environment dram_view returns a valid reference") {
     auto* env = make_env(json::object());
 
     THEN("dram_view returns a reference to a memory controller") {
-      auto& dram = env->dram_view();
+      auto drams = env->typed_view<champsim::modules::memory_controller_module>("memory_controller");
+      REQUIRE(drams.size() >= 1);
+      auto& dram = drams.front().get();
       REQUIRE(dram.get_num_channels() >= 1);
     }
   }
@@ -187,7 +189,7 @@ SCENARIO("Environment with custom DRAM parameters") {
     auto* env = make_env(config);
 
     THEN("DRAM is configured with 2 channels") {
-      REQUIRE(env->dram_view().get_num_channels() == 2);
+      REQUIRE(env->typed_view<champsim::modules::memory_controller_module>("memory_controller").front().get().get_num_channels() == 2);
     }
   }
 }
@@ -201,7 +203,7 @@ SCENARIO("Environment with custom virtual_memory levels") {
 
     THEN("The environment constructs successfully with 1 core") {
       REQUIRE(env->get_num_cpus() == 1);
-      REQUIRE(env->cpu_view().size() == 1);
+      REQUIRE(env->typed_view<champsim::modules::core_module>("core").size() == 1);
     }
   }
 }
@@ -226,14 +228,14 @@ SCENARIO("Environment dump mode does not crash") {
 
 // Helpers for module access
 champsim::modules::cache_module* get_cache(champsim::modules::environment_module* env, const std::string& name) {
-  for (auto& cache_ref : env->cache_view()) {
+  for (auto& cache_ref : env->typed_view<champsim::modules::cache_module>("cache")) {
     if (cache_ref.get().NAME == name)
       return &cache_ref.get();
   }
   return nullptr;
 }
 champsim::modules::page_table_walker_module* get_ptw(champsim::modules::environment_module* env, const std::string& name) {
-  for (auto& ptw_ref : env->ptw_view()) {
+  for (auto& ptw_ref : env->typed_view<champsim::modules::page_table_walker_module>("page_table_walker")) {
     if (ptw_ref.get().NAME == name)
       return &ptw_ref.get();
   }

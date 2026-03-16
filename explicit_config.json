@@ -212,7 +212,7 @@
       "pref_activate_mask": ["LOAD", "PREFETCH"],
       "upper_levels": ["@cpu0_L2C_LLC_channel"],
       "lower_level": "@LLC_DRAM_channel",
-      "lower_translate": null,
+      "lower_translate": {"null": "channel"},
       "children": [
         {"name": "LLC_prefetcher", "module": "prefetcher", "model": "no"},
         {"name": "LLC_replacement", "module": "replacement", "model": "lru"}
@@ -240,7 +240,7 @@
       "pref_activate_mask": ["LOAD", "PREFETCH"],
       "upper_levels": ["@cpu0_L1D_cpu0_DTLB_channel"],
       "lower_level": "@cpu0_DTLB_cpu0_STLB_channel",
-      "lower_translate": null,
+      "lower_translate": {"null": "channel"},
       "children": [
         {"name": "cpu0_DTLB_prefetcher", "module": "prefetcher", "model": "no"},
         {"name": "cpu0_DTLB_replacement", "module": "replacement", "model": "lru"}
@@ -268,7 +268,7 @@
       "pref_activate_mask": ["LOAD", "PREFETCH"],
       "upper_levels": ["@cpu0_L1I_cpu0_ITLB_channel"],
       "lower_level": "@cpu0_ITLB_cpu0_STLB_channel",
-      "lower_translate": null,
+      "lower_translate": {"null": "channel"},
       "children": [
         {"name": "cpu0_ITLB_prefetcher", "module": "prefetcher", "model": "no"},
         {"name": "cpu0_ITLB_replacement", "module": "replacement", "model": "lru"}
@@ -380,7 +380,7 @@
       "pref_activate_mask": ["LOAD", "PREFETCH"],
       "upper_levels": ["@cpu0_DTLB_cpu0_STLB_channel", "@cpu0_ITLB_cpu0_STLB_channel", "@cpu0_L2C_cpu0_STLB_channel"],
       "lower_level": "@cpu0_STLB_cpu0_PTW_channel",
-      "lower_translate": null,
+      "lower_translate": {"null": "channel"},
       "children": [
         {"name": "cpu0_STLB_prefetcher", "module": "prefetcher", "model": "no"},
         {"name": "cpu0_STLB_replacement", "module": "replacement", "model": "lru"}
@@ -392,7 +392,7 @@
       "name": "cpu0",
       "module": "core",
       "model": "DEFAULT_CORE",
-      "clock_period": {"picoseconds": 250},
+      "clock_period": {"frequency_ghz": 4},
       "cpu": 0,
       "dib_set": 32,
       "dib_way": 8,

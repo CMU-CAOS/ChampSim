@@ -30,12 +30,11 @@ namespace champsim {
 // specifies its name, interface type ("module"), and model ("model").
 // References to other modules use "@name" syntax and are resolved at construction time.
 class environment final : public champsim::modules::environment_module {
-  std::vector<champsim::modules::channel_module*> channels_;
-  champsim::modules::memory_controller_module* DRAM_ = nullptr;
-  champsim::modules::vmem_module* vmem_ = nullptr;
-  std::vector<champsim::modules::page_table_walker_module*> ptws_;
-  std::vector<champsim::modules::cache_module*> caches_;
-  std::vector<champsim::modules::core_module*> cores_;
+  // All modules indexed by interface type
+  std::map<std::string, std::vector<std::any>> modules_by_type_;
+
+  // Ordered list of (name, interface_type) pairs preserving JSON declaration order
+  std::vector<std::pair<std::string, std::string>> module_order_;
 
   size_t num_cpus_ = 0;
   unsigned block_size_ = 64;
@@ -51,11 +50,7 @@ class environment final : public champsim::modules::environment_module {
 public:
   explicit environment(champsim::modules::ModuleBuilder builder);
 
-  std::vector<std::reference_wrapper<champsim::modules::core_module>> cpu_view() override;
-  std::vector<std::reference_wrapper<champsim::modules::cache_module>> cache_view() override;
-  std::vector<std::reference_wrapper<champsim::modules::page_table_walker_module>> ptw_view() override;
-  champsim::modules::memory_controller_module& dram_view() override;
-  std::vector<std::reference_wrapper<champsim::operable>> operable_view() override;
+  std::vector<std::any> view(const std::string& interface_type) const override;
 
   size_t get_num_cpus() const override { return num_cpus_; }
   unsigned get_block_size() const override { return block_size_; }

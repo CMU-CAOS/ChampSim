@@ -236,6 +236,15 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
 {
   // Store the environment builder itself
   builder_params_[(builder.get_name().empty() ? "ENVIRONMENT" : builder.get_name())] = builder;
+
+  // Local variables (formerly member variables)
+  std::vector<channel_module*> channels;
+  memory_controller_module* DRAM = nullptr;
+  vmem_module* vmem = nullptr;
+  std::vector<page_table_walker_module*> ptws;
+  std::vector<cache_module*> caches;
+  std::vector<core_module*> cores;
+
   // Accept pre-parsed JSON from the builder
   json config = builder.get_parameter<json>("config_json");
   bool do_dump = builder.get_dump();
@@ -731,9 +740,9 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
     core_builder.add_parameter("l1d_bandwidth", l1d_ptr->get_max_tag_bandwidth());
     core_builder.add_parameter("data_queues", channels.at(find_ul_index(cc.l1d_name, cc.name)));
 
-    core_builder.add_parameter("bp_impls", parse_module_list(cc.config, "branch_predictor", "hashed_perceptron"));
-    core_builder.add_parameter("btb_impls", parse_module_list(cc.config, "btb", "basic_btb"));
-    core_builder.add_parameter("bp_params", parse_module_params(cc.config, "branch_predictor"));
+    core_builder.add_parameter("branch_predictor_modules", parse_module_list(cc.config, "branch_predictor", "hashed_perceptron"));
+    core_builder.add_parameter("btb_modules", parse_module_list(cc.config, "btb", "basic_btb"));
+    core_builder.add_parameter("branch_predictor_params", parse_module_params(cc.config, "branch_predictor"));
     core_builder.add_parameter("btb_params", parse_module_params(cc.config, "btb"));
     core_builder.add_parameter("cpu", cc.index);
     core_builder.add_parameter("clock_period", champsim::chrono::picoseconds{freq_to_period(cc.frequency)});
@@ -751,46 +760,49 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
     builder_params_[cc.name] = core_builder;
     cores.push_back(module_base<core_module, environment_module>::create_instance(core_builder));
   }
+
+  // Populate generic storage from local variables
+  for (auto* ch : channels) {
+    modules_by_type_["channel"].push_back(ch);
+    module_order_.emplace_back(ch->NAME, "channel");
+  }
+  modules_by_type_["memory_controller"].push_back(DRAM);
+  module_order_.emplace_back("DRAM", "memory_controller");
+  modules_by_type_["vmem"].push_back(vmem);
+  module_order_.emplace_back("VMEM", "vmem");
+  for (auto* p : ptws) {
+    modules_by_type_["page_table_walker"].push_back(p);
+    module_order_.emplace_back(p->NAME, "page_table_walker");
+  }
+  for (auto* c : caches) {
+    modules_by_type_["cache"].push_back(c);
+    module_order_.emplace_back(c->NAME, "cache");
+  }
+  for (auto* c : cores) {
+    modules_by_type_["core"].push_back(c);
+    module_order_.emplace_back(c->NAME, "core");
+  }
 }
 
-// ====== View functions ======
+// ====== View function ======
 
-auto champsim::legacy_environment::cpu_view() -> std::vector<std::reference_wrapper<champsim::modules::core_module>>
+auto champsim::legacy_environment::view(const std::string& interface_type) const -> std::vector<std::any>
 {
-  std::vector<std::reference_wrapper<champsim::modules::core_module>> retval;
-  auto make_ref = [](auto* x) { return std::ref(*x); };
-  std::transform(std::begin(cores), std::end(cores), std::back_inserter(retval), make_ref);
-  return retval;
-}
+  if (interface_type == "operable") {
+    std::vector<std::any> result;
+    // Use a per-type counter to map module_order_ entries to modules_by_type_ indices
+    std::map<std::string, std::size_t> type_idx;
+    for (auto& [name, iface] : module_order_) {
+      auto to_op = champsim::modules::interface_registry::get_to_operable(iface);
+      if (!to_op) continue;
+      auto& vec = modules_by_type_.at(iface);
+      auto idx = type_idx[iface]++;
+      result.push_back(static_cast<champsim::operable*>(to_op(vec.at(idx))));
+    }
+    return result;
+  }
 
-auto champsim::legacy_environment::cache_view() -> std::vector<std::reference_wrapper<champsim::modules::cache_module>>
-{
-  std::vector<std::reference_wrapper<champsim::modules::cache_module>> retval;
-  auto make_ref = [](auto* x) { return std::ref(*x); };
-  std::transform(std::begin(caches), std::end(caches), std::back_inserter(retval), make_ref);
-  return retval;
-}
-
-auto champsim::legacy_environment::ptw_view() -> std::vector<std::reference_wrapper<champsim::modules::page_table_walker_module>>
-{
-  std::vector<std::reference_wrapper<champsim::modules::page_table_walker_module>> retval;
-  auto make_ref = [](auto* x) { return std::ref(*x); };
-  std::transform(std::begin(ptws), std::end(ptws), std::back_inserter(retval), make_ref);
-  return retval;
-}
-
-auto champsim::legacy_environment::dram_view() -> champsim::modules::memory_controller_module&
-{
-  return *DRAM;
-}
-
-auto champsim::legacy_environment::operable_view() -> std::vector<std::reference_wrapper<champsim::operable>>
-{
-  std::vector<std::reference_wrapper<champsim::operable>> retval;
-  auto make_ref = [](auto* x) { return std::ref<champsim::operable>(*x); };
-  std::transform(std::begin(cores), std::end(cores), std::back_inserter(retval), make_ref);
-  std::transform(std::begin(caches), std::end(caches), std::back_inserter(retval), make_ref);
-  std::transform(std::begin(ptws), std::end(ptws), std::back_inserter(retval), make_ref);
-  retval.push_back(std::ref<champsim::operable>(*DRAM));
-  return retval;
+  auto it = modules_by_type_.find(interface_type);
+  if (it == modules_by_type_.end()) return {};
+  return it->second;
 }

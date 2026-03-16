@@ -165,11 +165,17 @@ struct ModuleBuilder {
 // Registry for module interfaces: maps interface name strings to factory functions.
 // This allows runtime lookup of which module_base specialization to use for creation.
 class interface_registry {
+public:
   struct interface_info {
     std::function<std::any(ModuleBuilder)> create;
     std::function<std::any(const std::vector<std::any>&)> make_vector;
+    // Returns operable* from a typed any, or nullptr if the interface is not operable
+    std::function<champsim::operable*(const std::any&)> to_operable;
+    // Creates a typed null pointer wrapped in std::any
+    std::function<std::any()> make_null_pointer;
   };
 
+private:
   static std::map<std::string, interface_info>& registry() {
     static std::map<std::string, interface_info> r;
     return r;
@@ -204,6 +210,23 @@ public:
 
   static bool has_interface(const std::string& name) {
     return registry().count(name) > 0;
+  }
+
+  // Get the to_operable converter for an interface, or nullptr if not operable
+  static std::function<champsim::operable*(const std::any&)> get_to_operable(const std::string& interface_name) {
+    auto it = registry().find(interface_name);
+    if (it == registry().end()) return nullptr;
+    return it->second.to_operable;
+  }
+
+  // Create a typed null pointer for the given interface
+  static std::any make_null_pointer(const std::string& interface_name) {
+    auto it = registry().find(interface_name);
+    if (it == registry().end()) {
+      fmt::print("[MODULE] ERROR: unknown interface for null pointer: {}\n", interface_name);
+      exit(-1);
+    }
+    return it->second.make_null_pointer();
   }
 };
 
@@ -290,18 +313,26 @@ struct module_base {
     // This allows the explicit environment to create modules by interface name string.
     struct register_interface {
       register_interface(std::string interface_name) {
-        interface_registry::register_interface(interface_name, {
-          [](ModuleBuilder builder) -> std::any {
-            return create_instance(std::move(builder));
-          },
-          [](const std::vector<std::any>& elements) -> std::any {
-            std::vector<B*> vec;
-            for (auto& e : elements) {
-              vec.push_back(std::any_cast<B*>(e));
-            }
-            return vec;
+        interface_registry::interface_info info;
+        info.create = [](ModuleBuilder builder) -> std::any {
+          return create_instance(std::move(builder));
+        };
+        info.make_vector = [](const std::vector<std::any>& elements) -> std::any {
+          std::vector<B*> vec;
+          for (auto& e : elements) {
+            vec.push_back(std::any_cast<B*>(e));
           }
-        });
+          return vec;
+        };
+        if constexpr (std::is_base_of_v<champsim::operable, B>) {
+          info.to_operable = [](const std::any& a) -> champsim::operable* {
+            return static_cast<champsim::operable*>(std::any_cast<B*>(a));
+          };
+        }
+        info.make_null_pointer = []() -> std::any {
+          return static_cast<B*>(nullptr);
+        };
+        interface_registry::register_interface(interface_name, std::move(info));
       }
     };
 
@@ -572,11 +603,18 @@ struct module_base {
   // Environment module interface - the top-level module that owns/constructs the entire simulation
 
   struct environment_module : public module_base<environment_module, environment_module> {
-    virtual std::vector<std::reference_wrapper<core_module>> cpu_view() = 0;
-    virtual std::vector<std::reference_wrapper<cache_module>> cache_view() = 0;
-    virtual std::vector<std::reference_wrapper<page_table_walker_module>> ptw_view() = 0;
-    virtual memory_controller_module& dram_view() = 0;
-    virtual std::vector<std::reference_wrapper<champsim::operable>> operable_view() = 0;
+    // Single generic view function: returns all modules of the given interface type.
+    // Special interface_type "operable" returns all operable modules across all interfaces.
+    virtual std::vector<std::any> view(const std::string& interface_type) const = 0;
+
+    // Typed convenience wrapper: casts the any values to T* and returns reference_wrappers.
+    template<typename T>
+    std::vector<std::reference_wrapper<T>> typed_view(const std::string& interface_type) const {
+      auto raw = view(interface_type);
+      std::vector<std::reference_wrapper<T>> result;
+      for (auto& a : raw) result.push_back(std::ref(*std::any_cast<T*>(a)));
+      return result;
+    }
 
     virtual std::size_t get_num_cpus() const { return 0; }
     virtual unsigned get_block_size() const { return 64; }

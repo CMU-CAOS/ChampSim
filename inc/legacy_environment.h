@@ -27,34 +27,29 @@
 namespace champsim {
 
 class legacy_environment final : public champsim::modules::environment_module {
-  std::vector<champsim::modules::channel_module*> channels;
-  champsim::modules::memory_controller_module* DRAM = nullptr;
-  champsim::modules::vmem_module* vmem = nullptr;
-  std::vector<champsim::modules::page_table_walker_module*> ptws;
-  std::vector<champsim::modules::cache_module*> caches;
-  std::vector<champsim::modules::core_module*> cores;
+  // All modules indexed by interface type
+  std::map<std::string, std::vector<std::any>> modules_by_type_;
+
+  // Ordered list of (name, interface_type) pairs preserving construction order
+  std::vector<std::pair<std::string, std::string>> module_order_;
 
   size_t num_cpus_ = 0;
   unsigned block_size_ = 64;
   unsigned page_size_ = 4096;
 
-  // New: map from module name to ModuleBuilder used for construction
+  // Map from module name to ModuleBuilder used for construction
   std::map<std::string, champsim::modules::ModuleBuilder> builder_params_;
 
 public:
   explicit legacy_environment(champsim::modules::ModuleBuilder builder);
 
-  std::vector<std::reference_wrapper<champsim::modules::core_module>> cpu_view() override;
-  std::vector<std::reference_wrapper<champsim::modules::cache_module>> cache_view() override;
-  std::vector<std::reference_wrapper<champsim::modules::page_table_walker_module>> ptw_view() override;
-  champsim::modules::memory_controller_module& dram_view() override;
-  std::vector<std::reference_wrapper<champsim::operable>> operable_view() override;
+  std::vector<std::any> view(const std::string& interface_type) const override;
 
   size_t get_num_cpus() const override { return num_cpus_; }
   unsigned get_block_size() const override { return block_size_; }
   unsigned get_page_size() const override { return page_size_; }
 
-  // New: expose builder params for test snooping
+  // Expose builder params for test snooping
   const champsim::modules::ModuleBuilder get_builder_params(const std::string& module_name) const override {
     auto it = builder_params_.find(module_name);
     if (it != builder_params_.end()) return it->second;

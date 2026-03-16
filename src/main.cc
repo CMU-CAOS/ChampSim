@@ -128,7 +128,7 @@ int main(int argc, char** argv) // NOLINT(bugprone-exception-escape)
   if (knob_dump) fmt::print("=== End Module Builder Dump ===\n");
 
   auto set_heartbeat_callback = [&](auto) {
-    for (champsim::modules::core_module& cpu : gen_environment->cpu_view()) {
+    for (champsim::modules::core_module& cpu : gen_environment->typed_view<champsim::modules::core_module>("core")) {
       cpu.quiet(true);
     }
   };
@@ -186,7 +186,7 @@ int main(int argc, char** argv) // NOLINT(bugprone-exception-escape)
   }
 
   fmt::print("\n*** ChampSim Multicore Out-of-Order Simulator ***\nWarmup Instructions: {}\nSimulation Instructions: {}\nNumber of CPUs: {}\nPage size: {}\n\n",
-             phases.at(0).length, phases.at(1).length, std::size(gen_environment->cpu_view()), PAGE_SIZE);
+             phases.at(0).length, phases.at(1).length, std::size(gen_environment->typed_view<champsim::modules::core_module>("core")), PAGE_SIZE);
 
   auto phase_stats = champsim::main(*gen_environment, phases, traces);
 
@@ -194,7 +194,7 @@ int main(int argc, char** argv) // NOLINT(bugprone-exception-escape)
 
   champsim::plain_printer{std::cout}.print(phase_stats);
 
-  for (champsim::operable& op : gen_environment->operable_view()) {
+  for (champsim::operable& op : gen_environment->typed_view<champsim::operable>("operable")) {
     op.end_simulation();
   }
 
