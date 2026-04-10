@@ -25,7 +25,7 @@ SCENARIO("ModuleBuilder dump logs parameter accesses when enabled")
   GIVEN("A builder with dump enabled, one param set and one left to default")
   {
     ModuleBuilder::set_dump_enabled(true);
-    auto builder = ModuleBuilder{"test_mod", "test_dummy_093", static_cast<champsim::modules::cache_module*>(nullptr)};
+    auto builder = ModuleBuilder{"test_mod", "test_dummy_093"};
     builder.add_parameter("param_a", 10);
 
     WHEN("get_parameter is called for a set param and an optional defaulted param")
@@ -63,7 +63,7 @@ SCENARIO("ModuleBuilder dump logs parameter accesses when enabled")
   {
     ModuleBuilder::clear_dump_log();
     ModuleBuilder::set_dump_enabled(false);
-    auto builder = ModuleBuilder{"test_mod2", "test_dummy_093", static_cast<champsim::modules::cache_module*>(nullptr)}
+    auto builder = ModuleBuilder{"test_mod2", "test_dummy_093"}
       .add_parameter("param_a", 5);
 
     WHEN("get_parameter is called")
@@ -91,9 +91,9 @@ SCENARIO("ModuleBuilder dump works through create_instance")
     ModuleBuilder::set_dump_enabled(true);
     WHEN("create_instance is called")
     {
-      auto builder = ModuleBuilder{"dump_test_mod", "test_dummy_093", static_cast<champsim::modules::cache_module*>(nullptr)};
+      auto builder = ModuleBuilder{"dump_test_mod", "test_dummy_093"};
       builder.add_parameter("param_a", 7);
-      auto* instance = champsim::modules::prefetcher::create_instance(builder);
+      auto* instance = champsim::modules::prefetcher::create_instance(builder, static_cast<champsim::modules::cache_module*>(nullptr));
 
       THEN("The dump log shows param_a as 7 (set) and param_b as 42 (default)")
       {
@@ -135,7 +135,7 @@ SCENARIO("ModuleBuilder dump flag propagates through defaults constructor")
 
     WHEN("A new builder is constructed with those defaults")
     {
-      auto builder = ModuleBuilder{"prop_test", "test_dummy_093", static_cast<champsim::modules::cache_module*>(nullptr), defaults};
+      auto builder = ModuleBuilder{"prop_test", "test_dummy_093", defaults};
       builder.add_parameter("param_a", 99);
       builder.get_parameter<int>("param_a");
 

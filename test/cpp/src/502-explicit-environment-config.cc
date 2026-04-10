@@ -176,9 +176,9 @@ json minimal_explicit_config() {
 
 // Helper to build an explicit environment from a JSON config
 champsim::modules::environment_module* make_explicit_env(const json& config) {
-  auto builder = ModuleBuilder{"test_explicit_env", "EXPLICIT_ENVIRONMENT", static_cast<champsim::modules::environment_module*>(nullptr)};
+  auto builder = ModuleBuilder{"test_explicit_env", "EXPLICIT_ENVIRONMENT"};
   builder.add_parameter("config_json", config);
-  return champsim::modules::environment_module::create_instance(builder);
+  return champsim::modules::environment_module::create_instance(builder, static_cast<champsim::modules::environment_module*>(nullptr));
 }
 
 // Helpers for module access by name
@@ -341,32 +341,32 @@ SCENARIO("Explicit environment propagates nested children as module lists") {
     auto config = minimal_explicit_config();
     auto* env = make_explicit_env(config);
 
-    THEN("LLC builder has prefetcher_modules=['no'] and replacement_modules=['lru']") {
+    THEN("LLC builder has prefetcher submodule ['no'] and replacement submodule ['lru']") {
       auto llc_builder = env->get_builder_params("LLC");
       REQUIRE(llc_builder.is_valid());
-      auto pf = llc_builder.get_parameter<std::vector<std::string>>("prefetcher_modules");
+      auto& pf = llc_builder.get_submodules("prefetcher");
       REQUIRE(pf.size() == 1);
-      REQUIRE(pf[0] == "no");
-      auto repl = llc_builder.get_parameter<std::vector<std::string>>("replacement_modules");
+      REQUIRE(pf[0].get_model() == "no");
+      auto& repl = llc_builder.get_submodules("replacement");
       REQUIRE(repl.size() == 1);
-      REQUIRE(repl[0] == "lru");
+      REQUIRE(repl[0].get_model() == "lru");
     }
-    THEN("cpu0_L2C builder has prefetcher_modules=['spp_dev']") {
+    THEN("cpu0_L2C builder has prefetcher submodule ['spp_dev']") {
       auto l2c_builder = env->get_builder_params("cpu0_L2C");
       REQUIRE(l2c_builder.is_valid());
-      auto pf = l2c_builder.get_parameter<std::vector<std::string>>("prefetcher_modules");
+      auto& pf = l2c_builder.get_submodules("prefetcher");
       REQUIRE(pf.size() == 1);
-      REQUIRE(pf[0] == "spp_dev");
+      REQUIRE(pf[0].get_model() == "spp_dev");
     }
-    THEN("cpu0 core builder has branch_predictor_modules=['bimodal'] and btb_modules=['basic_btb']") {
+    THEN("cpu0 core builder has branch_predictor submodule ['bimodal'] and btb submodule ['basic_btb']") {
       auto core_builder = env->get_builder_params("cpu0");
       REQUIRE(core_builder.is_valid());
-      auto bp = core_builder.get_parameter<std::vector<std::string>>("branch_predictor_modules");
+      auto& bp = core_builder.get_submodules("branch_predictor");
       REQUIRE(bp.size() == 1);
-      REQUIRE(bp[0] == "bimodal");
-      auto btb = core_builder.get_parameter<std::vector<std::string>>("btb_modules");
+      REQUIRE(bp[0].get_model() == "bimodal");
+      auto& btb = core_builder.get_submodules("btb");
       REQUIRE(btb.size() == 1);
-      REQUIRE(btb[0] == "basic_btb");
+      REQUIRE(btb[0].get_model() == "basic_btb");
     }
   }
 }
@@ -405,18 +405,18 @@ SCENARIO("Explicit environment propagates nested child parameters") {
     }
     auto* env = make_explicit_env(config);
 
-    THEN("cpu0_L2C builder has prefetcher_modules=['ip_stride']") {
+    THEN("cpu0_L2C builder has prefetcher submodule ['ip_stride']") {
       auto l2c_builder = env->get_builder_params("cpu0_L2C");
       REQUIRE(l2c_builder.is_valid());
-      auto pf = l2c_builder.get_parameter<std::vector<std::string>>("prefetcher_modules");
+      auto& pf = l2c_builder.get_submodules("prefetcher");
       REQUIRE(pf.size() == 1);
-      REQUIRE(pf[0] == "ip_stride");
+      REQUIRE(pf[0].get_model() == "ip_stride");
     }
-    THEN("cpu0_L2C builder has nested prefetcher_params with degree=4") {
+    THEN("cpu0_L2C builder has nested prefetcher submodule with degree=4") {
       auto l2c_builder = env->get_builder_params("cpu0_L2C");
-      auto pf_params = l2c_builder.get_parameter<ModuleBuilder::module_builder_map_type>("prefetcher_params");
-      REQUIRE(pf_params.count("ip_stride"));
-      REQUIRE(pf_params["ip_stride"].get_parameter<int64_t>("degree") == 4);
+      auto& pf = l2c_builder.get_submodules("prefetcher");
+      REQUIRE(pf.size() >= 1);
+      REQUIRE(pf[0].get_parameter<int64_t>("degree") == 4);
     }
   }
 }
@@ -428,12 +428,11 @@ SCENARIO("Explicit environment dump mode does not crash") {
     ModuleBuilder::clear_dump_log();
     ModuleBuilder::set_dump_enabled(true);
     auto config = minimal_explicit_config();
-    auto builder = ModuleBuilder{"dump_explicit_env", "EXPLICIT_ENVIRONMENT",
-                                 static_cast<champsim::modules::environment_module*>(nullptr)};
+    auto builder = ModuleBuilder{"dump_explicit_env", "EXPLICIT_ENVIRONMENT"};
     builder.add_parameter("config_json", config);
 
     THEN("Construction succeeds and dump log is non-empty") {
-      auto* env = champsim::modules::environment_module::create_instance(builder);
+      auto* env = champsim::modules::environment_module::create_instance(builder, static_cast<champsim::modules::environment_module*>(nullptr));
       REQUIRE(env->get_num_cpus() == 1);
       REQUIRE_FALSE(ModuleBuilder::get_dump_log().empty());
     }
@@ -448,10 +447,9 @@ SCENARIO("Explicit environment dump log contains expected modules and parameters
     ModuleBuilder::clear_dump_log();
     ModuleBuilder::set_dump_enabled(true);
     auto config = minimal_explicit_config();
-    auto builder = ModuleBuilder{"dump_explicit", "EXPLICIT_ENVIRONMENT",
-                                 static_cast<champsim::modules::environment_module*>(nullptr)};
+    auto builder = ModuleBuilder{"dump_explicit", "EXPLICIT_ENVIRONMENT"};
     builder.add_parameter("config_json", config);
-    champsim::modules::environment_module::create_instance(builder);
+    champsim::modules::environment_module::create_instance(builder, static_cast<champsim::modules::environment_module*>(nullptr));
     auto& log = ModuleBuilder::get_dump_log();
 
     THEN("The dump log contains entries for all major module types") {

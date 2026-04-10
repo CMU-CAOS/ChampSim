@@ -87,13 +87,14 @@ SCENARIO("The simulator selects the address-based victim finder in replacement p
   {
     do_nothing_MRC mock_ll;
     to_rq_MRP mock_ul;
-    CACHE uut{champsim::modules::ModuleBuilder{"uut_cache", "DEFAULT_CACHE", nullptr, champsim::defaults::default_l1d()}
+    CACHE uut{champsim::modules::ModuleBuilder{"uut_cache", "DEFAULT_CACHE", champsim::defaults::default_l1d()}
       .add_parameter("num_sets", static_cast<uint32_t>(1))
       .add_parameter("num_ways", static_cast<uint32_t>(1))
       .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul.queues})
       .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
       .add_parameter("offset_bits", champsim::data::bits{})
-      .add_parameter("replacement_modules", std::vector<std::string>{"dual_interface","lru"})
+      .add_submodule("replacement", champsim::modules::ModuleBuilder{"uut_cachedual_interface", "dual_interface"})
+      .add_submodule("replacement", champsim::modules::ModuleBuilder{"uut_cachelru", "lru"})
     };
 
     std::array<champsim::operable*, 3> elements{{&mock_ll, &mock_ul, &uut}};
@@ -162,7 +163,7 @@ SCENARIO("The simulator selects the address-based update function in replacement
     constexpr uint64_t fill_latency = 2;
     do_nothing_MRC mock_ll;
     to_rq_MRP mock_ul;
-    CACHE uut{champsim::modules::ModuleBuilder{"uut_cache", "DEFAULT_CACHE", nullptr, champsim::defaults::default_l2c()}
+    CACHE uut{champsim::modules::ModuleBuilder{"uut_cache", "DEFAULT_CACHE", champsim::defaults::default_l2c()}
       .add_parameter("num_sets", static_cast<uint32_t>(1))
       .add_parameter("num_ways", static_cast<uint32_t>(1))
       .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul.queues})
@@ -171,7 +172,8 @@ SCENARIO("The simulator selects the address-based update function in replacement
       .add_parameter("fill_latency", static_cast<uint64_t>(fill_latency))
       .add_parameter("pref_activate_mask", std::vector<access_type>{type})
       .add_parameter("offset_bits", champsim::data::bits{})
-      .add_parameter("replacement_modules", std::vector<std::string>{"dual_interface","lru"})
+      .add_submodule("replacement", champsim::modules::ModuleBuilder{"uut_cachedual_interface", "dual_interface"})
+      .add_submodule("replacement", champsim::modules::ModuleBuilder{"uut_cachelru", "lru"})
     };
 
     std::array<champsim::operable*, 3> elements{{&mock_ll, &mock_ul, &uut}};
@@ -225,7 +227,7 @@ SCENARIO("The simulator selects the cache fill function if it is available")
     constexpr uint64_t fill_latency = 10;
     do_nothing_MRC mock_ll;
     to_rq_MRP mock_ul;
-    CACHE uut{champsim::modules::ModuleBuilder{"uut_cache", "DEFAULT_CACHE", nullptr, champsim::defaults::default_l2c()}
+    CACHE uut{champsim::modules::ModuleBuilder{"uut_cache", "DEFAULT_CACHE", champsim::defaults::default_l2c()}
       .add_parameter("num_sets", static_cast<uint32_t>(1))
       .add_parameter("num_ways", static_cast<uint32_t>(1))
       .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul.queues})
@@ -234,7 +236,8 @@ SCENARIO("The simulator selects the cache fill function if it is available")
       .add_parameter("fill_latency", static_cast<uint64_t>(fill_latency))
       .add_parameter("pref_activate_mask", std::vector<access_type>{type})
       .add_parameter("offset_bits", champsim::data::bits{})
-      .add_parameter("replacement_modules", std::vector<std::string>{"fill_selection","lru"})
+      .add_submodule("replacement", champsim::modules::ModuleBuilder{"uut_cachefill_selection", "fill_selection"})
+      .add_submodule("replacement", champsim::modules::ModuleBuilder{"uut_cachelru", "lru"})
     };
 
     std::array<champsim::operable*, 3> elements{{&mock_ll, &mock_ul, &uut}};

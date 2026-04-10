@@ -22,7 +22,7 @@ SCENARIO("A dram controller reports its size accurately")
     const std::size_t DRAM_CHANNEL_WIDTH = 8;
     const champsim::data::bytes expected_size{1ul << 33ul};
 
-    MEMORY_CONTROLLER uut{champsim::modules::ModuleBuilder{"uut", "DRAM", nullptr, champsim::defaults::default_memory_controller()}
+    MEMORY_CONTROLLER uut{champsim::modules::ModuleBuilder{"uut", "DRAM", champsim::defaults::default_memory_controller()}
                               .add_parameter("mc_period", clock_period)
                               .add_parameter("t_rp", trp_cycles)
                               .add_parameter("t_rcd", trcd_cycles)
@@ -57,7 +57,7 @@ SCENARIO("A dram controller reports its size accurately")
     const std::size_t DRAM_CHANNEL_WIDTH = 8;
     const champsim::data::gibibytes expected_size{1ul << 34ul};
 
-    MEMORY_CONTROLLER uut{champsim::modules::ModuleBuilder{"uut", "DRAM", nullptr, champsim::defaults::default_memory_controller()}
+    MEMORY_CONTROLLER uut{champsim::modules::ModuleBuilder{"uut", "DRAM", champsim::defaults::default_memory_controller()}
                               .add_parameter("mc_period", clock_period)
                               .add_parameter("t_rp", trp_cycles)
                               .add_parameter("t_rcd", trcd_cycles)
@@ -92,7 +92,7 @@ SCENARIO("A dram controller reports its size accurately")
     const std::size_t DRAM_CHANNEL_WIDTH = 8;
     const champsim::data::gibibytes expected_size{1ul << 35ul};
 
-    MEMORY_CONTROLLER uut{champsim::modules::ModuleBuilder{"uut", "DRAM", nullptr, champsim::defaults::default_memory_controller()}
+    MEMORY_CONTROLLER uut{champsim::modules::ModuleBuilder{"uut", "DRAM", champsim::defaults::default_memory_controller()}
                               .add_parameter("mc_period", clock_period)
                               .add_parameter("t_rp", trp_cycles)
                               .add_parameter("t_rcd", trcd_cycles)

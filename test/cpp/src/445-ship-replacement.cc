@@ -26,13 +26,13 @@ TEST_CASE("SHIP sampler matches at cache block granularity")
    */
   do_nothing_MRC mock_ll;
   to_rq_MRP mock_ul;
-  CACHE cache{champsim::modules::ModuleBuilder{"445-ship-tag-test", "DEFAULT_CACHE", nullptr, champsim::defaults::default_l1d()}
+  CACHE cache{champsim::modules::ModuleBuilder{"445-ship-tag-test", "DEFAULT_CACHE", champsim::defaults::default_l1d()}
     .add_parameter("num_sets", static_cast<uint32_t>(8))
     .add_parameter("num_ways", static_cast<uint32_t>(8))
     .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul.queues})
     .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
     .add_parameter("offset_bits", champsim::data::bits{6}) // BLOCK_SIZE=64 → OFFSET_BITS=6
-    .add_parameter("replacement_modules", std::vector<std::string>{"ship"})
+    .add_submodule("replacement", champsim::modules::ModuleBuilder{"445-ship-tag-testship", "ship"})
   };
 
   auto* ship_repl = dynamic_cast<ship*>(champsim::modules::replacement::get_instance<champsim::modules::replacement>("445-ship-tag-testship"));

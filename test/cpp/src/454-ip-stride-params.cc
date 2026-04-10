@@ -10,17 +10,14 @@
 
 namespace
 {
-// Helper: build a CACHE with ip_stride using the given prefetcher_params
+// Helper: build a CACHE with ip_stride using the given submodule builder
 CACHE make_cache(do_nothing_MRC& mock_ll, to_rq_MRP& mock_ul,
-                 champsim::modules::ModuleBuilder::module_builder_map_type pref_params = {})
+                 champsim::modules::ModuleBuilder pref_sub = champsim::modules::ModuleBuilder{"uut_cacheip_stride", "ip_stride"})
 {
-  auto builder = champsim::modules::ModuleBuilder{"uut_cache", "DEFAULT_CACHE", nullptr, champsim::defaults::default_l1d()}
+  auto builder = champsim::modules::ModuleBuilder{"uut_cache", "DEFAULT_CACHE", champsim::defaults::default_l1d()}
     .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul.queues})
     .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
-    .add_parameter("prefetcher_modules", std::vector<std::string>{"ip_stride"});
-
-  if (!pref_params.empty())
-    builder.add_parameter("prefetcher_params", pref_params);
+    .add_submodule("prefetcher", std::move(pref_sub));
 
   return CACHE{std::move(builder)};
 }
@@ -89,9 +86,8 @@ SCENARIO("ip_stride respects the degree parameter")
   {
     do_nothing_MRC mock_ll;
     to_rq_MRP mock_ul;
-    champsim::modules::ModuleBuilder::module_builder_map_type pref_params;
-    pref_params["ip_stride"] = champsim::modules::ModuleBuilder{"", "ip_stride", nullptr}.add_parameter("degree", 5);
-    auto uut = make_cache(mock_ll, mock_ul, pref_params);
+    auto pref_sub = champsim::modules::ModuleBuilder{"uut_cacheip_stride", "ip_stride"}.add_parameter("degree", 5);
+    auto uut = make_cache(mock_ll, mock_ul, std::move(pref_sub));
     auto count = run_stride_test(mock_ll, mock_ul, uut);
 
     THEN("The prefetcher issues 5 prefetches (seed + 2 strided + 5 prefetched = 8 total)")
@@ -104,9 +100,8 @@ SCENARIO("ip_stride respects the degree parameter")
   {
     do_nothing_MRC mock_ll;
     to_rq_MRP mock_ul;
-    champsim::modules::ModuleBuilder::module_builder_map_type pref_params;
-    pref_params["ip_stride"] = champsim::modules::ModuleBuilder{"", "ip_stride", nullptr}.add_parameter("degree", 1);
-    auto uut = make_cache(mock_ll, mock_ul, pref_params);
+    auto pref_sub = champsim::modules::ModuleBuilder{"uut_cacheip_stride", "ip_stride"}.add_parameter("degree", 1);
+    auto uut = make_cache(mock_ll, mock_ul, std::move(pref_sub));
     auto count = run_stride_test(mock_ll, mock_ul, uut);
 
     THEN("The prefetcher issues 1 prefetch (seed + 2 strided + 1 prefetched = 4 total)")
@@ -122,9 +117,8 @@ SCENARIO("ip_stride respects the tracker_sets parameter")
   {
     do_nothing_MRC mock_ll;
     to_rq_MRP mock_ul;
-    champsim::modules::ModuleBuilder::module_builder_map_type pref_params;
-    pref_params["ip_stride"] = champsim::modules::ModuleBuilder{"", "ip_stride", nullptr}.add_parameter("tracker_sets", static_cast<std::size_t>(1));
-    auto uut = make_cache(mock_ll, mock_ul, pref_params);
+    auto pref_sub = champsim::modules::ModuleBuilder{"uut_cacheip_stride", "ip_stride"}.add_parameter("tracker_sets", static_cast<std::size_t>(1));
+    auto uut = make_cache(mock_ll, mock_ul, std::move(pref_sub));
 
     // With only 1 set, the table still works (just more conflicts).
     // Verify it doesn't crash and still produces some output.
@@ -139,9 +133,8 @@ SCENARIO("ip_stride respects the tracker_ways parameter")
   {
     do_nothing_MRC mock_ll;
     to_rq_MRP mock_ul;
-    champsim::modules::ModuleBuilder::module_builder_map_type pref_params;
-    pref_params["ip_stride"] = champsim::modules::ModuleBuilder{"", "ip_stride", nullptr}.add_parameter("tracker_ways", static_cast<std::size_t>(1));
-    auto uut = make_cache(mock_ll, mock_ul, pref_params);
+    auto pref_sub = champsim::modules::ModuleBuilder{"uut_cacheip_stride", "ip_stride"}.add_parameter("tracker_ways", static_cast<std::size_t>(1));
+    auto uut = make_cache(mock_ll, mock_ul, std::move(pref_sub));
 
     auto count = run_stride_test(mock_ll, mock_ul, uut);
     THEN("The cache still functions") { REQUIRE(count >= 3); }

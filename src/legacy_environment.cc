@@ -124,7 +124,7 @@ param_map_type parse_module_params(const json& j, const std::string& key) {
 
   auto extract_params = [](const json& obj) -> ModuleBuilder {
     auto model = obj.contains("model") ? obj["model"].get<std::string>() : std::string{};
-    ModuleBuilder params{"", model, nullptr};
+    ModuleBuilder params{"", model};
     for (auto& [k, val] : obj.items()) {
       if (k == "model") continue;
       if (val.is_number_integer()) params.add_parameter(k, val.get<int64_t>());
@@ -539,7 +539,7 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
       }
     }
 
-    auto ch_builder = ModuleBuilder{ch_name, "DEFAULT_CHANNEL", static_cast<environment_module*>(this)};
+    auto ch_builder = ModuleBuilder{ch_name, "DEFAULT_CHANNEL"};
     ch_builder.add_parameter("rq_size", rq_size)
       .add_parameter("pq_size", pq_size)
       .add_parameter("wq_size", wq_size)
@@ -547,7 +547,7 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
       .add_parameter("match_offset_bits", match_offset);
 
     builder_params_[ch_name] = ch_builder;
-    channels.push_back(module_base<channel_module, environment_module>::create_instance(ch_builder));
+    channels.push_back(module_base<channel_module, environment_module>::create_instance(ch_builder, this));
   }
 
   // ====== Build DRAM ======
@@ -555,7 +555,7 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
   {
     // Support "frequency" as alias for "data_rate" (frequency == data_rate in DRAM context)
     int data_rate = pmem_json.value("data_rate", pmem_json.value("frequency", 3200));
-    auto dram_builder = ModuleBuilder{"DRAM", "DEFAULT_MEMORY_CONTROLLER", static_cast<environment_module*>(this),
+    auto dram_builder = ModuleBuilder{"DRAM", "DEFAULT_MEMORY_CONTROLLER",
                                       champsim::defaults::default_memory_controller()};
     dram_builder
       .add_parameter("dbus_period", champsim::chrono::picoseconds{freq_to_period(data_rate)})
@@ -582,7 +582,7 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
     dram_builder.add_parameter("ul_channels", dram_ul_channels);
 
     builder_params_["DRAM"] = dram_builder;
-    DRAM = module_base<memory_controller_module, environment_module>::create_instance(dram_builder);
+    DRAM = module_base<memory_controller_module, environment_module>::create_instance(dram_builder, this);
   }
 
   // ====== Build vmem ======
@@ -595,7 +595,7 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
     if (max_freq == 0) max_freq = 4000;
     int64_t global_clock_period = freq_to_period(max_freq);
 
-    auto vmem_builder = ModuleBuilder{"VMEM", "DEFAULT_VMEM", static_cast<environment_module*>(this),
+    auto vmem_builder = ModuleBuilder{"VMEM", "DEFAULT_VMEM",
                                       champsim::defaults::default_vmem()};
     vmem_builder
       .add_parameter("page_table_page_size", champsim::data::bytes{
@@ -609,13 +609,13 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
       randomization == 0 ? std::optional<uint64_t>{} : std::optional<uint64_t>{static_cast<uint64_t>(randomization)});
 
     builder_params_["VMEM"] = vmem_builder;
-    vmem = module_base<vmem_module, environment_module>::create_instance(vmem_builder);
+    vmem = module_base<vmem_module, environment_module>::create_instance(vmem_builder, this);
   }
 
   // ====== Build PTWs ======
   ptws.reserve(ptw_cfgs.size());
   for (auto& pc : ptw_cfgs) {
-    auto ptw_builder = ModuleBuilder{pc.name, pc.model, static_cast<environment_module*>(this),
+    auto ptw_builder = ModuleBuilder{pc.name, pc.model,
                                      champsim::defaults::default_ptw()};
 
     std::vector<channel_module*> ptw_ul_channels;
@@ -643,7 +643,7 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
     }
 
     builder_params_[pc.name] = ptw_builder;
-    ptws.push_back(module_base<page_table_walker_module, environment_module>::create_instance(ptw_builder));
+    ptws.push_back(module_base<page_table_walker_module, environment_module>::create_instance(ptw_builder, this));
   }
 
   // ====== Build caches ======
@@ -656,7 +656,7 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
   for (auto& cache_name : cache_build_order) {
     auto& cc = cache_cfgs[cache_name];
 
-    auto cache_builder = ModuleBuilder{cc.name, cc.model, static_cast<environment_module*>(this), cc.defaults_builder};
+    auto cache_builder = ModuleBuilder{cc.name, cc.model, cc.defaults_builder};
 
     std::vector<channel_module*> cache_ul_channels;
     for (auto idx : find_upper_indices(cc.name))
@@ -664,11 +664,34 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
     cache_builder.add_parameter("upper_levels", cache_ul_channels);
     cache_builder.add_parameter("offset_bits", champsim::data::bits{cc.is_tlb ? log2_page_size : log2_block_size});
 
-    // Module lists and nested params from JSON
-    cache_builder.add_parameter("replacement_modules", parse_module_list(cc.config, "replacement", "lru"));
-    cache_builder.add_parameter("prefetcher_modules", parse_module_list(cc.config, "prefetcher", "no"));
-    cache_builder.add_parameter("replacement_params", parse_module_params(cc.config, "replacement"));
-    cache_builder.add_parameter("prefetcher_params", parse_module_params(cc.config, "prefetcher"));
+    // Module lists and nested params from JSON → structured submodules
+    // Clear defaults' submodules first since we always rebuild from JSON/defaults
+    {
+      cache_builder.clear_submodules("prefetcher");
+      auto pref_models = parse_module_list(cc.config, "prefetcher", "no");
+      auto pref_params = parse_module_params(cc.config, "prefetcher");
+      for (auto& model_name : pref_models) {
+        auto sub = ModuleBuilder{cache_name + model_name, model_name};
+        if (auto it = pref_params.find(model_name); it != pref_params.end()) {
+          for (auto& [k, v] : it->second.get_parameters())
+            sub.add_raw_parameter(k, v);
+        }
+        cache_builder.add_submodule("prefetcher", std::move(sub));
+      }
+    }
+    {
+      cache_builder.clear_submodules("replacement");
+      auto repl_models = parse_module_list(cc.config, "replacement", "lru");
+      auto repl_params = parse_module_params(cc.config, "replacement");
+      for (auto& model_name : repl_models) {
+        auto sub = ModuleBuilder{cache_name + model_name, model_name};
+        if (auto it = repl_params.find(model_name); it != repl_params.end()) {
+          for (auto& [k, v] : it->second.get_parameters())
+            sub.add_raw_parameter(k, v);
+        }
+        cache_builder.add_submodule("replacement", std::move(sub));
+      }
+    }
 
     cache_builder.add_parameter("lower_level", channels.at(find_ul_index(cc.lower_level, cc.name)));
     if (!cc.lower_translate.empty())
@@ -728,13 +751,13 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
 
     cache_index_map[cc.name] = caches.size();
     builder_params_[cc.name] = cache_builder;
-    caches.push_back(module_base<cache_module, environment_module>::create_instance(cache_builder));
+    caches.push_back(module_base<cache_module, environment_module>::create_instance(cache_builder, this));
   }
 
   // ====== Build cores ======
   cores.reserve(core_cfgs.size());
   for (auto& cc : core_cfgs) {
-    auto core_builder = ModuleBuilder{cc.name, cc.model, static_cast<environment_module*>(this),
+    auto core_builder = ModuleBuilder{cc.name, cc.model,
                                       champsim::defaults::default_core()};
 
     auto l1i_ptr = caches.at(cache_index_map[cc.l1i_name]);
@@ -746,10 +769,34 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
     core_builder.add_parameter("l1d_bandwidth", l1d_ptr->get_max_tag_bandwidth());
     core_builder.add_parameter("data_queues", channels.at(find_ul_index(cc.l1d_name, cc.name)));
 
-    core_builder.add_parameter("branch_predictor_modules", parse_module_list(cc.config, "branch_predictor", "hashed_perceptron"));
-    core_builder.add_parameter("btb_modules", parse_module_list(cc.config, "btb", "basic_btb"));
-    core_builder.add_parameter("branch_predictor_params", parse_module_params(cc.config, "branch_predictor"));
-    core_builder.add_parameter("btb_params", parse_module_params(cc.config, "btb"));
+    // Build branch predictor submodules
+    {
+      core_builder.clear_submodules("branch_predictor");
+      auto bp_models = parse_module_list(cc.config, "branch_predictor", "hashed_perceptron");
+      auto bp_params = parse_module_params(cc.config, "branch_predictor");
+      for (auto& model : bp_models) {
+        auto sub = ModuleBuilder{cc.name + "_branch_predictor_" + model, model};
+        if (auto it = bp_params.find(model); it != bp_params.end()) {
+          for (auto& [k, v] : it->second.get_parameters())
+            sub.add_raw_parameter(k, v);
+        }
+        core_builder.add_submodule("branch_predictor", std::move(sub));
+      }
+    }
+    // Build BTB submodules
+    {
+      core_builder.clear_submodules("btb");
+      auto btb_models = parse_module_list(cc.config, "btb", "basic_btb");
+      auto btb_params = parse_module_params(cc.config, "btb");
+      for (auto& model : btb_models) {
+        auto sub = ModuleBuilder{cc.name + "_btb_" + model, model};
+        if (auto it = btb_params.find(model); it != btb_params.end()) {
+          for (auto& [k, v] : it->second.get_parameters())
+            sub.add_raw_parameter(k, v);
+        }
+        core_builder.add_submodule("btb", std::move(sub));
+      }
+    }
     core_builder.add_parameter("cpu", cc.index);
     core_builder.add_parameter("clock_period", champsim::chrono::picoseconds{freq_to_period(cc.frequency)});
 
@@ -775,7 +822,7 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
     json_bandwidth_or_wrapped(core_builder, cc.config, "dib_inorder_width", "dib_inorder_width");
 
     builder_params_[cc.name] = core_builder;
-    cores.push_back(module_base<core_module, environment_module>::create_instance(core_builder));
+    cores.push_back(module_base<core_module, environment_module>::create_instance(core_builder, this));
   }
 
   // Populate generic storage from local variables

@@ -260,26 +260,13 @@ public:
         FILL_LATENCY(builder.get_parameter<uint64_t>("fill_latency") * builder.get_parameter<champsim::chrono::picoseconds>("clock_period")), OFFSET_BITS(builder.get_parameter<champsim::data::bits>("offset_bits")), MAX_TAG(builder.get_parameter<champsim::bandwidth::maximum_type>("max_tag_bandwidth")), MAX_FILL(builder.get_parameter<champsim::bandwidth::maximum_type>("max_fill_bandwidth")),
         prefetch_as_load(builder.get_parameter<bool>("prefetch_as_load")), match_offset_bits(builder.get_parameter<bool>("match_offset_bits")), virtual_prefetch(builder.get_parameter<bool>("virtual_prefetch")), pref_activate_mask(builder.get_parameter<std::vector<access_type>>("pref_activate_mask"))
   {
-    if(std::size(builder.get_parameter<std::vector<std::string>>("prefetcher_modules")) == 0) {
-      fmt::print("[{}] WARNING: No prefetcher modules specified, using no\n",NAME);
-      builder.get_parameter<std::vector<std::string>>("prefetcher_modules").push_back("no");
-    }
-    if(std::size(builder.get_parameter<std::vector<std::string>>("replacement_modules")) == 0) {
-      fmt::print("[{}] WARNING: No replacement modules specified, using lru\n",NAME);
-      builder.get_parameter<std::vector<std::string>>("replacement_modules").push_back("lru");
-    }
-    auto pref_params = builder.get_parameter<champsim::modules::ModuleBuilder::module_builder_map_type>("prefetcher_params", true);
-    auto repl_params = builder.get_parameter<champsim::modules::ModuleBuilder::module_builder_map_type>("replacement_params", true);
-    for(auto s : builder.get_parameter<std::vector<std::string>>("prefetcher_modules")) {
-      auto nested = champsim::modules::ModuleBuilder{builder.get_name()+s,s,static_cast<champsim::modules::cache_module*>(this)};
-      nested.apply_nested_params(pref_params);
-      pref_module_pimpl.push_back(champsim::modules::prefetcher::create_instance(nested));
-    }
-    for(auto s : builder.get_parameter<std::vector<std::string>>("replacement_modules")) {
-      auto nested = champsim::modules::ModuleBuilder{builder.get_name()+s,s,static_cast<champsim::modules::cache_module*>(this)};
-      nested.apply_nested_params(repl_params);
-      repl_module_pimpl.push_back(champsim::modules::replacement::create_instance(nested));
-    }
+    // Construct prefetcher submodules
+    for (const auto& sub : builder.get_submodules("prefetcher"))
+      pref_module_pimpl.push_back(champsim::modules::prefetcher::create_instance(sub, static_cast<champsim::modules::cache_module*>(this)));
+
+    // Construct replacement submodules
+    for (const auto& sub : builder.get_submodules("replacement"))
+      repl_module_pimpl.push_back(champsim::modules::replacement::create_instance(sub, static_cast<champsim::modules::cache_module*>(this)));
   }
 
   CACHE(const CACHE&) = delete;

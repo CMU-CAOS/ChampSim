@@ -194,7 +194,7 @@ champsim::environment::environment(ModuleBuilder builder)
     std::string iface = child["module"].get<std::string>();
     std::string model = child["model"].get<std::string>();
 
-    auto mod_builder = ModuleBuilder{name, model, static_cast<environment_module*>(this)};
+    auto mod_builder = ModuleBuilder{name, model};
 
     // Process all JSON parameters (skip reserved keys)
     for (auto& [key, val] : child.items()) {
@@ -272,18 +272,14 @@ champsim::environment::environment(ModuleBuilder builder)
       }
     }
 
-    // Handle nested children generically: group by interface type
+    // Handle nested children generically: build submodules by interface type
     if (child.contains("children")) {
-      std::map<std::string, std::vector<std::string>> child_models_by_iface;
-      std::map<std::string, ModuleBuilder::module_builder_map_type> child_params_by_iface;
-
       for (auto& sub : child["children"]) {
         std::string sub_iface = sub["module"].get<std::string>();
         std::string sub_name = sub["name"].get<std::string>();
         std::string sub_model = sub["model"].get<std::string>();
 
-        // Extract extra parameters (beyond name/module/model)
-        ModuleBuilder child_builder{sub_name, sub_model, nullptr};
+        ModuleBuilder child_builder{sub_name, sub_model};
         for (auto& [sk, sv] : sub.items()) {
           if (sk == "name" || sk == "module" || sk == "model") continue;
           if (sv.is_boolean()) child_builder.add_parameter(sk, sv.get<bool>());
@@ -292,20 +288,12 @@ champsim::environment::environment(ModuleBuilder builder)
           else if (sv.is_string()) child_builder.add_parameter(sk, sv.get<std::string>());
         }
 
-        child_models_by_iface[sub_iface].push_back(sub_model);
-        child_params_by_iface[sub_iface][sub_model] = std::move(child_builder);
-      }
-
-      for (auto& [child_iface, models] : child_models_by_iface) {
-        mod_builder.add_parameter(child_iface + "_modules", models);
-        if (child_params_by_iface.count(child_iface)) {
-          mod_builder.add_parameter(child_iface + "_params", child_params_by_iface[child_iface]);
-        }
+        mod_builder.add_submodule(sub_iface, std::move(child_builder));
       }
     }
 
     // Create the module via the interface registry
-    std::any typed_ptr = interface_registry::create(iface, mod_builder);
+    std::any typed_ptr = interface_registry::create(iface, mod_builder, static_cast<environment_module*>(this));
     modules_by_name_[name] = typed_ptr;
     module_interfaces_[name] = iface;
     builder_params_[name] = mod_builder;

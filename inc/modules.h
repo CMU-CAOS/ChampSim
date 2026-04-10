@@ -51,9 +51,15 @@ struct environment_module;
 struct ModuleBuilder {
   private:
   std::map<std::string,std::any> parameters;
+  std::map<std::string, std::vector<ModuleBuilder>> submodules_; // keyed by interface type
   std::string module_name = "";
   std::string model = "";
   std::any parent = nullptr;
+
+  template<typename T>
+  void set_parent(T* new_parent) { parent = new_parent; }
+  template<typename B, typename C> friend struct module_base;
+
   static bool global_dump_enabled_;
   static std::string dump_log_;
 
@@ -84,7 +90,7 @@ struct ModuleBuilder {
   static void clear_dump_log() { dump_log_.clear(); }
 
   template<typename T>
-  std::string dump_line(const std::string& mod, const std::string& name, const T& val, const char* tag) {
+  std::string dump_line(const std::string& mod, const std::string& name, const T& val, const char* tag) const {
     using value_type = std::decay_t<T>;
     if constexpr (std::is_same_v<value_type, std::map<std::string, ModuleBuilder>>) {
       std::string summaries;
@@ -111,7 +117,7 @@ struct ModuleBuilder {
   }
 
   template<typename T>
-  T get_parameter(std::string name, bool optional = false, T default_value = T{}) {
+  T get_parameter(std::string name, bool optional = false, T default_value = T{}) const {
     if(auto it = parameters.find(name); it != parameters.end()) {
       try {
         auto val = std::any_cast<T>(it->second);
@@ -165,26 +171,16 @@ struct ModuleBuilder {
 
   template<typename T>
   T* get_parent() const { return std::any_cast<T*>(parent); }
-
   // Type for storing per-model builders (model_name -> builder)
   using module_builder_map_type = std::map<std::string, ModuleBuilder>;
 
   const std::map<std::string, std::any>& get_parameters() const { return parameters; }
 
-  bool is_valid() const {return model != "" && module_name != "" && parent.has_value() && parent.type() != typeid(std::nullptr_t);}
+  bool is_valid() const {return model != "" && module_name != "";}
 
-  // Populate this builder with parameters from a module_builder_map_type map, if the model has an entry
-  ModuleBuilder& apply_nested_params(const module_builder_map_type& params_map) {
-    if (auto it = params_map.find(model); it != params_map.end()) {
-      if (!it->second.module_name.empty()) {
-        module_name = it->second.module_name;
-      }
-      for (auto& [k, v] : it->second.parameters) {
-        parameters[k] = v;
-      }
-    }
-    return *this;
-  }
+  // Internal check: parent has been set to a typed pointer (not the default std::nullptr_t)
+  bool has_parent() const {return parent.has_value() && parent.type() != typeid(std::nullptr_t);}
+
 
   // Store a pre-built std::any directly (avoids double-wrapping when passing resolved references)
   ModuleBuilder& add_raw_parameter(std::string name, std::any value) {
@@ -192,11 +188,50 @@ struct ModuleBuilder {
     return *this;
   }
 
+  // ---- Submodule management (keyed by interface type) ----
+
+  // Add a submodule builder under the given interface type.
+  ModuleBuilder& add_submodule(const std::string& interface_type, ModuleBuilder sub_builder) {
+    submodules_[interface_type].push_back(std::move(sub_builder));
+    return *this;
+  }
+
+  // Clear all submodule builders for a given interface type (e.g. before replacing defaults).
+  ModuleBuilder& clear_submodules(const std::string& interface_type) {
+    submodules_.erase(interface_type);
+    return *this;
+  }
+
+  // Get all submodule builders for a given interface type.
+  // Returns an empty vector if no submodules of that type exist.
+  const std::vector<ModuleBuilder>& get_submodules(const std::string& interface_type) const {
+    static const std::vector<ModuleBuilder> empty;
+    auto it = submodules_.find(interface_type);
+    if (it == submodules_.end()) return empty;
+    return it->second;
+  }
+
+  // Check whether submodules of the given interface type exist.
+  bool has_submodules(const std::string& interface_type) const {
+    auto it = submodules_.find(interface_type);
+    return it != submodules_.end() && !it->second.empty();
+  }
+
+  // Get the full submodule map (read-only).
+  const std::map<std::string, std::vector<ModuleBuilder>>& get_all_submodules() const {
+    return submodules_;
+  }
+
   ModuleBuilder() {}
-  ModuleBuilder(std::string name_, std::string model_, std::any parent_, ModuleBuilder defaults = ModuleBuilder{}) : module_name(name_), model(model_), parent(parent_) {
+  ModuleBuilder(std::string name_, std::string model_, ModuleBuilder defaults = ModuleBuilder{}) : module_name(name_), model(model_) {
     if(!defaults.parameters.empty()) {
       for(auto& [param_name, param_value] : defaults.parameters) {
         parameters[param_name] = param_value;
+      }
+    }
+    if(!defaults.submodules_.empty()) {
+      for(auto& [iface, subs] : defaults.submodules_) {
+        submodules_[iface] = subs;
       }
     }
   }
@@ -207,7 +242,7 @@ struct ModuleBuilder {
 class interface_registry {
 public:
   struct interface_info {
-    std::function<std::any(ModuleBuilder)> create;
+    std::function<std::any(ModuleBuilder, std::any)> create;
     std::function<std::any(const std::vector<std::any>&)> make_vector;
     // Returns operable* from a typed any, or nullptr if the interface is not operable
     std::function<champsim::operable*(const std::any&)> to_operable;
@@ -230,13 +265,13 @@ public:
     registry()[name] = std::move(info);
   }
 
-  static std::any create(const std::string& interface_name, ModuleBuilder builder) {
+  static std::any create(const std::string& interface_name, ModuleBuilder builder, std::any parent) {
     auto it = registry().find(interface_name);
     if (it == registry().end()) {
       fmt::print("[MODULE] ERROR: unknown interface: {}\n", interface_name);
       exit(-1);
     }
-    return it->second.create(std::move(builder));
+    return it->second.create(std::move(builder), std::move(parent));
   }
 
   static std::any make_vector(const std::string& interface_name, const std::vector<std::any>& elements) {
@@ -301,8 +336,10 @@ struct module_base {
     void bind(C* bind_arg) {intern_ = bind_arg;};
 
     //create an instance of the module, which will be stored in this base-module-type's static list
-    static B* create_instance(ModuleBuilder builder) {
-        if(!builder.is_valid()) {
+    //parent is set on the builder before validation and construction
+    static B* create_instance(ModuleBuilder builder, C* parent) {
+        builder.set_parent(parent);
+        if(!builder.is_valid() || !builder.has_parent()) {
             fmt::print("[MODULE] ERROR: invalid module builder used for module {}\n",builder.get_name());
             exit(-1);
         }
@@ -354,8 +391,8 @@ struct module_base {
     struct register_interface {
       register_interface(std::string interface_name) {
         interface_registry::interface_info info;
-        info.create = [](ModuleBuilder builder) -> std::any {
-          return create_instance(std::move(builder));
+        info.create = [](ModuleBuilder builder, std::any parent) -> std::any {
+          return create_instance(std::move(builder), std::any_cast<C*>(parent));
         };
         info.make_vector = [](const std::vector<std::any>& elements) -> std::any {
           std::vector<B*> vec;

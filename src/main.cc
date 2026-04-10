@@ -120,10 +120,10 @@ int main(int argc, char** argv) // NOLINT(bugprone-exception-escape)
   LOG2_BLOCK_SIZE = champsim::lg2(BLOCK_SIZE);
   LOG2_PAGE_SIZE = champsim::lg2(PAGE_SIZE);
 
-  auto env_builder = champsim::modules::ModuleBuilder("environment", env_model, static_cast<champsim::modules::environment_module*>(nullptr))
+  auto env_builder = champsim::modules::ModuleBuilder("environment", env_model)
     .add_parameter("config_json", config_json);
   champsim::modules::ModuleBuilder::set_dump_enabled(knob_dump);
-  auto* gen_environment = champsim::modules::environment_module::create_instance(env_builder);
+  auto* gen_environment = champsim::modules::environment_module::create_instance(env_builder, static_cast<champsim::modules::environment_module*>(nullptr));
 
   if (knob_dump) fmt::print("=== End Module Builder Dump ===\n");
 

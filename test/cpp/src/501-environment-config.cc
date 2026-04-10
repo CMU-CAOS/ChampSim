@@ -12,9 +12,9 @@ using champsim::modules::ModuleBuilder;
 namespace {
 // Helper to build an environment from a JSON config
 champsim::modules::environment_module* make_env(const json& config) {
-  auto builder = ModuleBuilder{"test_env", "DEFAULT_ENVIRONMENT", static_cast<champsim::modules::environment_module*>(nullptr)};
+  auto builder = ModuleBuilder{"test_env", "DEFAULT_ENVIRONMENT"};
   builder.add_parameter("config_json", config);
-  return champsim::modules::environment_module::create_instance(builder);
+  return champsim::modules::environment_module::create_instance(builder, static_cast<champsim::modules::environment_module*>(nullptr));
 }
 } // namespace
 
@@ -212,12 +212,11 @@ SCENARIO("Environment dump mode does not crash") {
   GIVEN("An empty config with dump enabled") {
     ModuleBuilder::clear_dump_log();
     ModuleBuilder::set_dump_enabled(true);
-    auto builder = ModuleBuilder{"dump_env", "DEFAULT_ENVIRONMENT",
-                                 static_cast<champsim::modules::environment_module*>(nullptr)};
+    auto builder = ModuleBuilder{"dump_env", "DEFAULT_ENVIRONMENT"};
     builder.add_parameter("config_json", json::object());
 
     THEN("Construction succeeds and dump log is non-empty") {
-      auto* env = champsim::modules::environment_module::create_instance(builder);
+      auto* env = champsim::modules::environment_module::create_instance(builder, static_cast<champsim::modules::environment_module*>(nullptr));
       REQUIRE(env->get_num_cpus() == 1);
       REQUIRE_FALSE(ModuleBuilder::get_dump_log().empty());
     }
@@ -231,10 +230,9 @@ SCENARIO("Legacy environment dump log contains expected modules and parameters")
   GIVEN("A default single-core config with dump enabled") {
     ModuleBuilder::clear_dump_log();
     ModuleBuilder::set_dump_enabled(true);
-    auto builder = ModuleBuilder{"dump_legacy", "DEFAULT_ENVIRONMENT",
-                                 static_cast<champsim::modules::environment_module*>(nullptr)};
+    auto builder = ModuleBuilder{"dump_legacy", "DEFAULT_ENVIRONMENT"};
     builder.add_parameter("config_json", json::object());
-    champsim::modules::environment_module::create_instance(builder);
+    champsim::modules::environment_module::create_instance(builder, static_cast<champsim::modules::environment_module*>(nullptr));
     auto& log = ModuleBuilder::get_dump_log();
 
     THEN("The dump log contains entries for all major module types") {
@@ -281,10 +279,9 @@ SCENARIO("Legacy environment dump log contains expected modules and parameters")
   GIVEN("A 2-core config with dump enabled") {
     ModuleBuilder::clear_dump_log();
     ModuleBuilder::set_dump_enabled(true);
-    auto builder = ModuleBuilder{"dump_legacy_2c", "DEFAULT_ENVIRONMENT",
-                                 static_cast<champsim::modules::environment_module*>(nullptr)};
+    auto builder = ModuleBuilder{"dump_legacy_2c", "DEFAULT_ENVIRONMENT"};
     builder.add_parameter("config_json", json({{"num_cores", 2}}));
-    champsim::modules::environment_module::create_instance(builder);
+    champsim::modules::environment_module::create_instance(builder, static_cast<champsim::modules::environment_module*>(nullptr));
     auto& log = ModuleBuilder::get_dump_log();
 
     THEN("The dump log contains entries for both cores") {
@@ -414,16 +411,13 @@ SCENARIO("Prefetcher module list and nested params parsing covers all branches a
     auto* env = make_env(config);
     champsim::modules::ModuleBuilder builder = env->get_builder_params("cpu0_L1D");
     REQUIRE(builder.is_valid());
-    auto pf_mods = builder.get_parameter<std::vector<std::string>>("prefetcher_modules");
-    REQUIRE(pf_mods.size() == 3);
-    REQUIRE(pf_mods[0] == "no");
-    REQUIRE(pf_mods[1] == "ip_stride");
-    REQUIRE(pf_mods[2] == "va_ampm_lite");
-    auto pf_params = builder.get_parameter<champsim::modules::ModuleBuilder::module_builder_map_type>("prefetcher_params");
-    REQUIRE(pf_params.count("ip_stride"));
-    REQUIRE(pf_params["ip_stride"].get_parameter<int64_t>("degree") == 8);
-    REQUIRE(pf_params.count("va_ampm_lite"));
-    REQUIRE(pf_params["va_ampm_lite"].get_parameter<int64_t>("window_size") == 16);
+    auto& pf_subs = builder.get_submodules("prefetcher");
+    REQUIRE(pf_subs.size() == 3);
+    REQUIRE(pf_subs[0].get_model() == "no");
+    REQUIRE(pf_subs[1].get_model() == "ip_stride");
+    REQUIRE(pf_subs[2].get_model() == "va_ampm_lite");
+    REQUIRE(pf_subs[1].get_parameter<int64_t>("degree") == 8);
+    REQUIRE(pf_subs[2].get_parameter<int64_t>("window_size") == 16);
   }
   GIVEN("prefetcher as single object") {
     json config = { {"L1D", {
@@ -432,12 +426,10 @@ SCENARIO("Prefetcher module list and nested params parsing covers all branches a
     auto* env = make_env(config);
     champsim::modules::ModuleBuilder builder = env->get_builder_params("cpu0_L1D");
     REQUIRE(builder.is_valid());
-    auto pf_mods = builder.get_parameter<std::vector<std::string>>("prefetcher_modules");
-    REQUIRE(pf_mods.size() == 1);
-    REQUIRE(pf_mods[0] == "ip_stride");
-    auto pf_params = builder.get_parameter<champsim::modules::ModuleBuilder::module_builder_map_type>("prefetcher_params");
-    REQUIRE(pf_params.count("ip_stride"));
-    REQUIRE(pf_params["ip_stride"].get_parameter<int64_t>("degree") == 4);
+    auto& pf_subs = builder.get_submodules("prefetcher");
+    REQUIRE(pf_subs.size() == 1);
+    REQUIRE(pf_subs[0].get_model() == "ip_stride");
+    REQUIRE(pf_subs[0].get_parameter<int64_t>("degree") == 4);
   }
   GIVEN("prefetcher as array of objects only") {
     json config = { {"L1D", {
@@ -449,15 +441,12 @@ SCENARIO("Prefetcher module list and nested params parsing covers all branches a
     auto* env = make_env(config);
     champsim::modules::ModuleBuilder builder = env->get_builder_params("cpu0_L1D");
     REQUIRE(builder.is_valid());
-    auto pf_mods = builder.get_parameter<std::vector<std::string>>("prefetcher_modules");
-    REQUIRE(pf_mods.size() == 2);
-    REQUIRE(pf_mods[0] == "ip_stride");
-    REQUIRE(pf_mods[1] == "va_ampm_lite");
-    auto pf_params = builder.get_parameter<champsim::modules::ModuleBuilder::module_builder_map_type>("prefetcher_params");
-    REQUIRE(pf_params.count("ip_stride"));
-    REQUIRE(pf_params["ip_stride"].get_parameter<int64_t>("degree") == 2);
-    REQUIRE(pf_params.count("va_ampm_lite"));
-    REQUIRE(pf_params["va_ampm_lite"].get_parameter<int64_t>("window_size") == 32);
+    auto& pf_subs = builder.get_submodules("prefetcher");
+    REQUIRE(pf_subs.size() == 2);
+    REQUIRE(pf_subs[0].get_model() == "ip_stride");
+    REQUIRE(pf_subs[1].get_model() == "va_ampm_lite");
+    REQUIRE(pf_subs[0].get_parameter<int64_t>("degree") == 2);
+    REQUIRE(pf_subs[1].get_parameter<int64_t>("window_size") == 32);
   }
 }
 
@@ -529,21 +518,17 @@ SCENARIO("Environment builder parameter snooping exposes config propagation") {
     REQUIRE(mask.size() == 2);
     REQUIRE(mask[0] == access_type::LOAD);
     REQUIRE(mask[1] == access_type::WRITE);
-    // Check replacement_modules and prefetcher_modules
-    auto repl_mods = l1d.get_parameter<std::vector<std::string>>("replacement_modules");
-    REQUIRE(repl_mods.size() == 2);
-    REQUIRE(repl_mods[0] == "lru");
-    REQUIRE(repl_mods[1] == "ship");
-    auto pf_mods = l1d.get_parameter<std::vector<std::string>>("prefetcher_modules");
-    REQUIRE(pf_mods.size() == 1);
-    REQUIRE(pf_mods[0] == "ip_stride");
+    // Check replacement and prefetcher submodules
+    auto& repl_subs = l1d.get_submodules("replacement");
+    REQUIRE(repl_subs.size() == 2);
+    REQUIRE(repl_subs[0].get_model() == "lru");
+    REQUIRE(repl_subs[1].get_model() == "ship");
+    auto& pf_subs = l1d.get_submodules("prefetcher");
+    REQUIRE(pf_subs.size() == 1);
+    REQUIRE(pf_subs[0].get_model() == "ip_stride");
     // Check nested params
-    auto repl_params = l1d.get_parameter<ModuleBuilder::module_builder_map_type>("replacement_params");
-    REQUIRE(repl_params.count("ship"));
-    REQUIRE(repl_params["ship"].get_parameter<int64_t>("param1") == 42);
-    auto pf_params = l1d.get_parameter<ModuleBuilder::module_builder_map_type>("prefetcher_params");
-    REQUIRE(pf_params.count("ip_stride"));
-    REQUIRE(pf_params["ip_stride"].get_parameter<int64_t>("degree") == 4);
+    REQUIRE(repl_subs[1].get_parameter<int64_t>("param1") == 42);
+    REQUIRE(pf_subs[0].get_parameter<int64_t>("degree") == 4);
 
     // PTW
     auto ptw = env->get_builder_params("cpu0_PTW");

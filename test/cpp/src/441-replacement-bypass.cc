@@ -30,7 +30,7 @@ SCENARIO("The replacement policy can bypass") {
     do_nothing_MRC mock_ll;
     to_wq_MRP mock_ul_seed;
     to_rq_MRP mock_ul_test;
-    CACHE uut{champsim::modules::ModuleBuilder{"uut_cache", "DEFAULT_CACHE", nullptr, champsim::defaults::default_l2c()}
+    CACHE uut{champsim::modules::ModuleBuilder{"uut_cache", "DEFAULT_CACHE", champsim::defaults::default_l2c()}
       .add_parameter("num_sets", static_cast<uint32_t>(1))
       .add_parameter("num_ways", static_cast<uint32_t>(1))
       .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul_seed.queues, &mock_ul_test.queues})
@@ -38,7 +38,8 @@ SCENARIO("The replacement policy can bypass") {
       .add_parameter("hit_latency", static_cast<uint64_t>(hit_latency))
       .add_parameter("fill_latency", static_cast<uint64_t>(fill_latency))
       .add_parameter("offset_bits", champsim::data::bits{})
-      .add_parameter("replacement_modules", std::vector<std::string>{"bypass_replacement"})
+      .clear_submodules("replacement")
+      .add_submodule("replacement", champsim::modules::ModuleBuilder{"uut_cachebypass_replacement", "bypass_replacement"})
     };
 
     std::array<champsim::operable*, 4> elements{{&mock_ll, &uut, &mock_ul_seed, &mock_ul_test}};
