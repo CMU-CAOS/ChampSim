@@ -36,6 +36,7 @@ class legacy_environment final : public champsim::modules::environment_module {
   size_t num_cpus_ = 0;
   unsigned block_size_ = 64;
   unsigned page_size_ = 4096;
+  int deadlock_cycles_ = 500;
 
   // Map from module name to ModuleBuilder used for construction
   std::map<std::string, champsim::modules::ModuleBuilder> builder_params_;
@@ -48,6 +49,7 @@ public:
   size_t get_num_cpus() const override { return num_cpus_; }
   unsigned get_block_size() const override { return block_size_; }
   unsigned get_page_size() const override { return page_size_; }
+  int get_deadlock_cycles() const override { return deadlock_cycles_; }
 
   // Expose builder params for test snooping
   const champsim::modules::ModuleBuilder get_builder_params(const std::string& module_name) const override {

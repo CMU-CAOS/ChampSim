@@ -22,11 +22,13 @@ long srrip::find_victim(uint32_t triggering_cpu, uint64_t instr_id, long set, co
   return sets.at(static_cast<std::size_t>(set)).victim();
 }
 
-// called on every cache hit and cache fill
+// called on every cache hit and cache miss
 void srrip::update_replacement_state(uint32_t triggering_cpu, long set, long way, champsim::address full_addr, champsim::address ip,
                                      champsim::address victim_addr, access_type type, uint8_t hit)
 {
-  sets.at(static_cast<std::size_t>(set)).update(way, hit);
+  // On a miss, way is past-the-end and not valid for indexing
+  if (hit)
+    sets.at(static_cast<std::size_t>(set)).update(way, hit);
 }
 
 srrip_set_helper::srrip_set_helper(long ways) : rrpv_values(static_cast<std::size_t>(ways), maxRRPV) {}

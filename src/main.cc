@@ -111,6 +111,11 @@ int main(int argc, char** argv) // NOLINT(bugprone-exception-escape)
     }
   }
 
+  // Print config description if present
+  if (config_json.contains("_description") && config_json["_description"].is_string()) {
+    fmt::print(stderr, "\nConfig: {}\n\n", config_json["_description"].get<std::string>());
+  }
+
   // Construct the environment via the module system
   std::string env_model = config_json.value("environment", std::string("DEFAULT_ENVIRONMENT"));
   // Set globals from the environment

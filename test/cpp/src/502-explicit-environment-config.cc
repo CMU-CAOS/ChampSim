@@ -34,7 +34,7 @@ json minimal_explicit_config() {
       {
         "name": "DRAM", "module": "memory_controller", "model": "DEFAULT_MEMORY_CONTROLLER",
         "dbus_period": {"time": "312p"}, "mc_period": {"time": "625p"},
-        "t_rp": 24, "t_rcd": 24, "t_cas": 24, "t_ras": 52,
+        "n_rp": 24, "n_rcd": 24, "n_cas": 24, "n_ras": 52,
         "refresh_period": {"time": "32000u"},
         "rq_size": 64, "wq_size": 64, "channels": 1, "channel_width": {"bytes": "8"},
         "rows": 65536, "columns": 1024, "ranks": 1, "bankgroups": 8, "banks": 4,
@@ -547,7 +547,7 @@ SCENARIO("Explicit environment supports multi-core via explicit module declarati
         {
           "name": "DRAM", "module": "memory_controller", "model": "DEFAULT_MEMORY_CONTROLLER",
           "dbus_period": {"time": "312p"}, "mc_period": {"time": "625p"},
-          "t_rp": 24, "t_rcd": 24, "t_cas": 24, "t_ras": 52,
+          "n_rp": 24, "n_rcd": 24, "n_cas": 24, "n_ras": 52,
           "refresh_period": {"time": "32000u"},
           "rq_size": 64, "wq_size": 64, "channels": 1, "channel_width": {"bytes": "8"},
           "rows": 65536, "columns": 1024, "ranks": 1, "bankgroups": 8, "banks": 4,

@@ -25,6 +25,7 @@
 #include <string>
 #include <cassert>
 #include <any>
+#include <optional>
 
 #include "access_type.h"
 #include "address.h"
@@ -88,6 +89,7 @@ struct ModuleBuilder {
   bool get_dump() const { return is_dump_enabled(); }
   static const std::string& get_dump_log() { return dump_log_; }
   static void clear_dump_log() { dump_log_.clear(); }
+  static void append_dump_log(const std::string& line) { dump_log_ += line; }
 
   template<typename T>
   std::string dump_line(const std::string& mod, const std::string& name, const T& val, const char* tag) const {
@@ -352,6 +354,24 @@ struct module_base {
           //It seems sketchy for the module wrapper to be tracking these separately from the module itself, can we fix this?
           instance_ptr->NAME =  builder.get_name();
           instance_ptr->bind(builder.get_parent<C>());
+          if (ModuleBuilder::is_dump_enabled()) {
+            auto line = fmt::format("  [{}] created_module = {} (set)\n", builder.get_name(), builder.get_model());
+            ModuleBuilder::append_dump_log(line);
+            fmt::print("{}", line);
+            // Print submodule info keyed by interface type
+            for (const auto& [iface, subs] : builder.get_all_submodules()) {
+              std::vector<std::string> names;
+              for (const auto& sub : subs) {
+                names.push_back(sub.get_name());
+                auto sub_created = fmt::format("  [{}] submodule = {}.{} (set)\n", sub.get_name(), iface, sub.get_model());
+                ModuleBuilder::append_dump_log(sub_created);
+                fmt::print("{}", sub_created);
+              }
+              auto sub_line = fmt::format("  [{}] {}_modules = [{}] (set)\n", builder.get_name(), iface, fmt::join(names, ", "));
+              ModuleBuilder::append_dump_log(sub_line);
+              fmt::print("{}", sub_line);
+            }
+          }
           return(instance_ptr);
         }
         catch(const std::bad_any_cast& caught) {
@@ -710,6 +730,7 @@ struct module_base {
     virtual std::size_t get_num_cpus() const { return 0; }
     virtual unsigned get_block_size() const { return 64; }
     virtual unsigned get_page_size() const { return 4096; }
+    virtual int get_deadlock_cycles() const { return 500; }
 
     // New: allow snooping of ModuleBuilder parameters by module name
     virtual const ModuleBuilder get_builder_params(const std::string& module_name) const = 0;

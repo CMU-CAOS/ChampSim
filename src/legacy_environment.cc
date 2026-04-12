@@ -271,10 +271,19 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
 
   // Parse cores from JSON
   auto cpu_json_array = config.value("ooo_cpu", json::array({json::object()}));
-  // Duplicate to fill num_cores if needed
-  while (cpu_json_array.size() < num_cores_cfg) {
-    std::size_t src_idx = cpu_json_array.size() % cpu_json_array.size();
-    cpu_json_array.push_back(cpu_json_array[src_idx]);
+  // Duplicate to fill num_cores: CT uses repeat-each-element, then truncate
+  // e.g. [A, B] with num_cores=4 → [A, A, B, B], not [A, B, A, B]
+  {
+    auto originals = cpu_json_array;
+    auto n = originals.size();
+    auto repeat_factor = (num_cores_cfg + n - 1) / n; // ceil(num_cores / n)
+    cpu_json_array = json::array();
+    for (const auto& entry : originals) {
+      for (std::size_t r = 0; r < repeat_factor; r++)
+        cpu_json_array.push_back(entry);
+    }
+    while (cpu_json_array.size() > num_cores_cfg)
+      cpu_json_array.erase(cpu_json_array.end() - 1);
   }
 
   // Build core configs
@@ -314,8 +323,18 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
   json ptw_json = config.value("PTW", json::object());
 
   // Build per-core caches
-  for (auto& cc : core_cfgs) {
+  for (std::size_t core_idx = 0; core_idx < core_cfgs.size(); core_idx++) {
+    auto& cc = core_cfgs[core_idx];
     int core_freq = cc.frequency;
+
+    // Helper: merge global cache config with per-core override from ooo_cpu[i]
+    auto merge_per_core = [&](const json& global_json, const std::string& cache_type) -> json {
+      json merged = global_json;
+      if (cpu_json_array[core_idx].contains(cache_type)) {
+        merged.merge_patch(cpu_json_array[core_idx][cache_type]);
+      }
+      return merged;
+    };
 
     // L1I
     {
@@ -328,7 +347,7 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
       c.first_level = true;
       c.queue_factor = 32;
       c.frequency = core_freq;
-      c.config = l1i_json;
+      c.config = merge_per_core(l1i_json, "L1I");
       cache_cfgs[c.name] = c;
     }
     // L1D
@@ -341,7 +360,7 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
       c.first_level = true;
       c.queue_factor = 32;
       c.frequency = core_freq;
-      c.config = l1d_json;
+      c.config = merge_per_core(l1d_json, "L1D");
       cache_cfgs[c.name] = c;
     }
     // ITLB
@@ -354,7 +373,7 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
       c.first_level = true;
       c.queue_factor = 16;
       c.frequency = core_freq;
-      c.config = itlb_json;
+      c.config = merge_per_core(itlb_json, "ITLB");
       cache_cfgs[c.name] = c;
     }
     // DTLB
@@ -367,7 +386,7 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
       c.first_level = true;
       c.queue_factor = 16;
       c.frequency = core_freq;
-      c.config = dtlb_json;
+      c.config = merge_per_core(dtlb_json, "DTLB");
       cache_cfgs[c.name] = c;
     }
     // L2C
@@ -379,7 +398,7 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
       c.defaults_builder = champsim::defaults::default_l2c();
       c.queue_factor = 16;
       c.frequency = core_freq;
-      c.config = l2c_json;
+      c.config = merge_per_core(l2c_json, "L2C");
       cache_cfgs[c.name] = c;
     }
     // STLB
@@ -391,7 +410,7 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
       c.is_tlb = true;
       c.queue_factor = 16;
       c.frequency = core_freq;
-      c.config = stlb_json;
+      c.config = merge_per_core(stlb_json, "STLB");
       cache_cfgs[c.name] = c;
     }
   }
@@ -403,7 +422,13 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
     c.lower_level = "DRAM";
     c.defaults_builder = champsim::defaults::default_llc();
     c.queue_factor = 32;
-    c.frequency = llc_json.value("frequency", core_cfgs.empty() ? 4000 : core_cfgs[0].frequency);
+    // CT uses the maximum frequency across all cores for LLC (shared cache)
+    int max_core_freq = core_cfgs.empty() ? 4000 : 0;
+    for (auto& cc2 : core_cfgs)
+      max_core_freq = std::max(max_core_freq, cc2.frequency);
+    c.frequency = llc_json.value("frequency", max_core_freq);
+    if (!llc_json.contains("frequency"))
+      fmt::print(stderr, "[DEFAULT] LLC: frequency={} (inherited from max core frequency)\n", c.frequency);
     c.config = llc_json;
     cache_cfgs[c.name] = c;
   }
@@ -559,11 +584,23 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
                                       champsim::defaults::default_memory_controller()};
     dram_builder
       .add_parameter("dbus_period", champsim::chrono::picoseconds{freq_to_period(data_rate)})
-      .add_parameter("mc_period", champsim::chrono::picoseconds{freq_to_period(data_rate / 2)})
-      .add_parameter("t_rp", pmem_json.value("tRP", 24))
-      .add_parameter("t_rcd", pmem_json.value("tRCD", 24))
-      .add_parameter("t_cas", pmem_json.value("tCAS", 24))
-      .add_parameter("t_ras", pmem_json.value("tRAS", 52))
+      .add_parameter("mc_period", champsim::chrono::picoseconds{freq_to_period(data_rate / 2.0)});
+
+    // DRAM timing parameters: prefer n* names (cycle counts), accept deprecated t* names
+    auto dram_timing = [&](const char* legacy_tUpper, const char* legacy_nUpper, int default_val) {
+      if (pmem_json.contains(legacy_nUpper))
+        return pmem_json.value(legacy_nUpper, default_val);
+      if (pmem_json.contains(legacy_tUpper)) {
+        fmt::print(stderr, "[WARNING] physical_memory.{} is deprecated, use {} instead\n", legacy_tUpper, legacy_nUpper);
+        return pmem_json.value(legacy_tUpper, default_val);
+      }
+      return default_val;
+    };
+    dram_builder
+      .add_parameter("n_rp",  dram_timing("tRP",  "nRP",  24))
+      .add_parameter("n_rcd", dram_timing("tRCD", "nRCD", 24))
+      .add_parameter("n_cas", dram_timing("tCAS", "nCAS", 24))
+      .add_parameter("n_ras", dram_timing("tRAS", "nRAS", 52))
       .add_parameter("refresh_period", champsim::chrono::microseconds{1000 * pmem_json.value("refresh_period", 32)})
       .add_parameter("rq_size", pmem_json.value("rq_size", 64))
       .add_parameter("wq_size", pmem_json.value("wq_size", 64))
@@ -588,12 +625,9 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
   // ====== Build vmem ======
   json vmem_json = config.value("virtual_memory", json::object());
   {
-    int max_freq = 0;
-    for (auto& cc : core_cfgs) max_freq = std::max(max_freq, cc.frequency);
-    for (auto& [name, cc] : cache_cfgs) max_freq = std::max(max_freq, cc.frequency);
-    for (auto& pc : ptw_cfgs) max_freq = std::max(max_freq, pc.frequency);
-    if (max_freq == 0) max_freq = 4000;
-    int64_t global_clock_period = freq_to_period(max_freq);
+    // minor_fault_penalty is an absolute time in nanoseconds (vmem has no clock).
+    // Convert ns -> ps (* 1000) for internal chrono representation.
+    int64_t minor_fault_ns = vmem_json.value("minor_fault_penalty", 200);
 
     auto vmem_builder = ModuleBuilder{"VMEM", "DEFAULT_VMEM",
                                       champsim::defaults::default_vmem()};
@@ -601,12 +635,15 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
       .add_parameter("page_table_page_size", champsim::data::bytes{
           vmem_json.contains("pte_page_size") ? static_cast<int>(parse_size_value(vmem_json["pte_page_size"])) : 4096})
       .add_parameter("page_table_levels", vmem_json.value("num_levels", 5))
-      .add_parameter("minor_fault_penalty", champsim::chrono::picoseconds{global_clock_period * vmem_json.value("minor_fault_penalty", 200)})
+      .add_parameter("minor_fault_penalty", champsim::chrono::picoseconds{minor_fault_ns * 1000})
       .add_parameter("dram", DRAM);
 
-    auto randomization = vmem_json.value("randomization", 1);
+    // CT treats boolean false as "no shuffle" and any integer (even 0) as a seed value.
+    // Only disable shuffling when the JSON value is explicitly boolean false.
+    bool no_shuffle = vmem_json.contains("randomization") && vmem_json["randomization"].is_boolean() && vmem_json["randomization"].get<bool>() == false;
+    auto randomization_int = vmem_json.value("randomization", 1);
     vmem_builder.add_parameter("randomization_seed",
-      randomization == 0 ? std::optional<uint64_t>{} : std::optional<uint64_t>{static_cast<uint64_t>(randomization)});
+      no_shuffle ? std::optional<uint64_t>{} : std::optional<uint64_t>{static_cast<uint64_t>(randomization_int)});
 
     builder_params_["VMEM"] = vmem_builder;
     vmem = module_base<vmem_module, environment_module>::create_instance(vmem_builder, this);
@@ -671,7 +708,7 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
       auto pref_models = parse_module_list(cc.config, "prefetcher", "no");
       auto pref_params = parse_module_params(cc.config, "prefetcher");
       for (auto& model_name : pref_models) {
-        auto sub = ModuleBuilder{cache_name + model_name, model_name};
+        auto sub = ModuleBuilder{cache_name + "." + model_name, model_name};
         if (auto it = pref_params.find(model_name); it != pref_params.end()) {
           for (auto& [k, v] : it->second.get_parameters())
             sub.add_raw_parameter(k, v);
@@ -684,7 +721,7 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
       auto repl_models = parse_module_list(cc.config, "replacement", "lru");
       auto repl_params = parse_module_params(cc.config, "replacement");
       for (auto& model_name : repl_models) {
-        auto sub = ModuleBuilder{cache_name + model_name, model_name};
+        auto sub = ModuleBuilder{cache_name + "." + model_name, model_name};
         if (auto it = repl_params.find(model_name); it != repl_params.end()) {
           for (auto& [k, v] : it->second.get_parameters())
             sub.add_raw_parameter(k, v);
@@ -712,12 +749,15 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
         } else if (has_hit) {
           hit  = cc.config["hit_latency"].get<int64_t>();
           fill = total - hit;
+          fmt::print(stderr, "[DEFAULT] {}: fill_latency={} (derived from latency={} - hit_latency={})\n", cc.name, std::max(fill, int64_t{1}), total, hit);
         } else if (has_fill) {
           fill = cc.config["fill_latency"].get<int64_t>();
           hit  = total - fill;
+          fmt::print(stderr, "[DEFAULT] {}: hit_latency={} (derived from latency={} - fill_latency={})\n", cc.name, std::max(hit, int64_t{1}), total, fill);
         } else {
           hit  = total / 2;
           fill = total - hit;
+          fmt::print(stderr, "[DEFAULT] {}: hit_latency={}, fill_latency={} (split from latency={})\n", cc.name, std::max(hit, int64_t{1}), std::max(fill, int64_t{1}), total);
         }
         cache_builder.add_parameter("hit_latency", std::max(hit, int64_t{1}));
         cache_builder.add_parameter("fill_latency", std::max(fill, int64_t{1}));
@@ -730,13 +770,19 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
       if (!cc.config.contains("sets") && !cc.config.contains("ways")) {
         // Use default ways, derive sets
         auto default_ways = cc.defaults_builder.get_parameter<uint32_t>("num_ways");
-        cache_builder.add_parameter("num_sets", champsim::next_pow2(static_cast<uint32_t>(total_bytes / (default_ways * (1u << offset)))));
+        auto derived_sets = champsim::next_pow2(static_cast<uint32_t>(total_bytes / (default_ways * (1u << offset))));
+        fmt::print(stderr, "[DEFAULT] {}: num_sets={} (derived from size={}, default ways={}, offset_bits={})\n", cc.name, derived_sets, total_bytes, default_ways, offset);
+        cache_builder.add_parameter("num_sets", derived_sets);
       } else if (cc.config.contains("ways") && !cc.config.contains("sets")) {
         auto ways = cc.config["ways"].get<uint32_t>();
-        cache_builder.add_parameter("num_sets", champsim::next_pow2(static_cast<uint32_t>(total_bytes / (ways * (1u << offset)))));
+        auto derived_sets = champsim::next_pow2(static_cast<uint32_t>(total_bytes / (ways * (1u << offset))));
+        fmt::print(stderr, "[DEFAULT] {}: num_sets={} (derived from size={}, ways={}, offset_bits={})\n", cc.name, derived_sets, total_bytes, ways, offset);
+        cache_builder.add_parameter("num_sets", derived_sets);
       } else if (cc.config.contains("sets") && !cc.config.contains("ways")) {
         auto sets = cc.config["sets"].get<uint32_t>();
-        cache_builder.add_parameter("num_ways", static_cast<uint32_t>(total_bytes / (sets * (1u << offset))));
+        auto derived_ways = static_cast<uint32_t>(total_bytes / (sets * (1u << offset)));
+        fmt::print(stderr, "[DEFAULT] {}: num_ways={} (derived from size={}, sets={}, offset_bits={})\n", cc.name, derived_ways, total_bytes, sets, offset);
+        cache_builder.add_parameter("num_ways", derived_ways);
       }
       // If both sets and ways are explicit, size is ignored (explicit values win)
     }
@@ -748,6 +794,68 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
     // prefetch_activate needs special parsing
     if (cc.config.contains("prefetch_activate"))
       cache_builder.add_parameter("pref_activate_mask", parse_pref_activate(cc.config["prefetch_activate"]));
+
+    // Apply wq_check_full_addr to cache match_offset_bits (for dump parity with CT)
+    if (cc.first_level || cc.config.value("wq_check_full_addr", false))
+      cache_builder.add_parameter("match_offset_bits", true);
+
+    // ====== CT-compatible derived defaults ======
+    // When values aren't explicitly set in JSON, derive them from geometry
+    // using the same formulas as the CT config system.
+    {
+      // Step 1: Scale num_sets by upper level count (if not explicit)
+      auto ul_indices = find_upper_indices(cc.name);
+      std::size_t num_uppers = std::max(ul_indices.size(), std::size_t{1});
+
+      if (!cc.config.contains("sets") && !cc.config.contains("size")) {
+        uint32_t base_sets = cc.defaults_builder.get_parameter<uint32_t>("num_sets");
+        uint32_t scaled_sets = champsim::next_pow2(static_cast<uint32_t>(base_sets * num_uppers));
+        if (num_uppers > 1)
+          fmt::print(stderr, "[DEFAULT] {}: num_sets={} (scaled from base={} x {} upper levels)\n", cc.name, scaled_sets, base_sets, num_uppers);
+        cache_builder.add_parameter("num_sets", scaled_sets);
+      }
+
+      // Resolve final geometry for subsequent derivations
+      uint32_t final_sets = cache_builder.get_parameter<uint32_t>("num_sets");
+      uint32_t final_ways = cache_builder.get_parameter<uint32_t>("num_ways");
+
+      // Step 2: Derive latency from geometry if no latency keys in JSON
+      if (!cc.config.contains("latency") && !cc.config.contains("hit_latency") && !cc.config.contains("fill_latency")) {
+        uint64_t total = std::max(uint64_t{2},
+          static_cast<uint64_t>(std::llround(std::pow(static_cast<double>(final_sets) * final_ways, 0.343) * 0.416)));
+        uint64_t fill = (total + 1) / 2;
+        uint64_t hit = total - fill;
+        fmt::print(stderr, "[DEFAULT] {}: hit_latency={}, fill_latency={} (derived from sets={}, ways={})\n", cc.name, hit, fill, final_sets, final_ways);
+        cache_builder.add_parameter("hit_latency", hit);
+        cache_builder.add_parameter("fill_latency", fill);
+      }
+
+      uint64_t final_fill = cache_builder.get_parameter<uint64_t>("fill_latency");
+
+      // Step 3: Derive bandwidth from geometry if not explicit
+      if (!cc.config.contains("max_tag_check")) {
+        auto derived_bw = std::max(champsim::bandwidth::maximum_type{1},
+                                   champsim::bandwidth::maximum_type{final_sets >> 9});
+        fmt::print(stderr, "[DEFAULT] {}: max_tag_bandwidth={} (derived from sets={})\n", cc.name, champsim::to_underlying(derived_bw), final_sets);
+        cache_builder.add_parameter("max_tag_bandwidth", derived_bw);
+        if (!cc.config.contains("max_fill")) {
+          fmt::print(stderr, "[DEFAULT] {}: max_fill_bandwidth={} (derived from sets={})\n", cc.name, champsim::to_underlying(derived_bw), final_sets);
+          cache_builder.add_parameter("max_fill_bandwidth", derived_bw);
+        }
+      }
+
+      auto final_fill_bw = cache_builder.get_parameter<champsim::bandwidth::maximum_type>("max_fill_bandwidth");
+
+      // Step 4: Derive MSHR size from geometry if not explicit in JSON or defaults
+      // CT only sets explicit mshr_size for DTLB; all other caches use the formula
+      if (!cc.config.contains("mshr_size") && cc.defaults_builder.get_parameters().count("mshr_size") == 0) {
+        uint32_t derived_mshr = std::max(1u, static_cast<uint32_t>(
+          (static_cast<uint64_t>(final_sets) * final_fill * static_cast<uint64_t>(champsim::to_underlying(final_fill_bw))) >> 4));
+        fmt::print(stderr, "[DEFAULT] {}: mshr_size={} (derived from sets={}, fill_latency={}, fill_bw={})\n",
+                   cc.name, derived_mshr, final_sets, final_fill, champsim::to_underlying(final_fill_bw));
+        cache_builder.add_parameter("mshr_size", derived_mshr);
+      }
+    }
 
     cache_index_map[cc.name] = caches.size();
     builder_params_[cc.name] = cache_builder;
@@ -775,7 +883,7 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
       auto bp_models = parse_module_list(cc.config, "branch_predictor", "hashed_perceptron");
       auto bp_params = parse_module_params(cc.config, "branch_predictor");
       for (auto& model : bp_models) {
-        auto sub = ModuleBuilder{cc.name + "_branch_predictor_" + model, model};
+        auto sub = ModuleBuilder{cc.name + "." + model, model};
         if (auto it = bp_params.find(model); it != bp_params.end()) {
           for (auto& [k, v] : it->second.get_parameters())
             sub.add_raw_parameter(k, v);
@@ -789,7 +897,7 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
       auto btb_models = parse_module_list(cc.config, "btb", "basic_btb");
       auto btb_params = parse_module_params(cc.config, "btb");
       for (auto& model : btb_models) {
-        auto sub = ModuleBuilder{cc.name + "_btb_" + model, model};
+        auto sub = ModuleBuilder{cc.name + "." + model, model};
         if (auto it = btb_params.find(model); it != btb_params.end()) {
           for (auto& [k, v] : it->second.get_parameters())
             sub.add_raw_parameter(k, v);
@@ -825,26 +933,44 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
     cores.push_back(module_base<core_module, environment_module>::create_instance(core_builder, this));
   }
 
-  // Populate generic storage from local variables
-  for (auto* ch : channels) {
-    modules_by_type_["channel"].push_back(ch);
-    module_order_.emplace_back(ch->NAME, "channel");
+  // Deadlock threshold: CT uses a hardcoded 500,000.  We scale by the ratio of
+  // the slowest to fastest operable frequency so that configs with extreme
+  // frequency spreads (e.g. 6 GHz CPU + 800 MHz DRAM MC) don't false-trigger.
+  {
+    int max_freq = 0, min_freq = std::numeric_limits<int>::max();
+    for (auto& cc : core_cfgs)      { max_freq = std::max(max_freq, cc.frequency); min_freq = std::min(min_freq, cc.frequency); }
+    for (auto& [n, cc] : cache_cfgs){ max_freq = std::max(max_freq, cc.frequency); min_freq = std::min(min_freq, cc.frequency); }
+    for (auto& pc : ptw_cfgs)       { max_freq = std::max(max_freq, pc.frequency); min_freq = std::min(min_freq, pc.frequency); }
+    int data_rate = pmem_json.value("data_rate", pmem_json.value("frequency", 3200));
+    int dram_mc_freq = data_rate / 2;
+    max_freq = std::max(max_freq, dram_mc_freq);
+    min_freq = std::min(min_freq, dram_mc_freq);
+    if (min_freq <= 0) min_freq = 1;
+    int64_t ratio = std::max(int64_t{1}, static_cast<int64_t>(max_freq) / min_freq);
+    deadlock_cycles_ = static_cast<int>(std::min(ratio * 500000, int64_t{std::numeric_limits<int>::max()}));
   }
-  modules_by_type_["memory_controller"].push_back(DRAM);
-  module_order_.emplace_back("DRAM", "memory_controller");
-  modules_by_type_["vmem"].push_back(vmem);
-  module_order_.emplace_back("VMEM", "vmem");
-  for (auto* p : ptws) {
-    modules_by_type_["page_table_walker"].push_back(p);
-    module_order_.emplace_back(p->NAME, "page_table_walker");
+
+  // Populate generic storage from local variables
+  // Order must match CT: cores → caches → PTWs → DRAM (channels/vmem are non-operable)
+  for (auto* c : cores) {
+    modules_by_type_["core"].push_back(c);
+    module_order_.emplace_back(c->NAME, "core");
   }
   for (auto* c : caches) {
     modules_by_type_["cache"].push_back(c);
     module_order_.emplace_back(c->NAME, "cache");
   }
-  for (auto* c : cores) {
-    modules_by_type_["core"].push_back(c);
-    module_order_.emplace_back(c->NAME, "core");
+  for (auto* p : ptws) {
+    modules_by_type_["page_table_walker"].push_back(p);
+    module_order_.emplace_back(p->NAME, "page_table_walker");
+  }
+  modules_by_type_["memory_controller"].push_back(DRAM);
+  module_order_.emplace_back("DRAM", "memory_controller");
+  modules_by_type_["vmem"].push_back(vmem);
+  module_order_.emplace_back("VMEM", "vmem");
+  for (auto* ch : channels) {
+    modules_by_type_["channel"].push_back(ch);
+    module_order_.emplace_back(ch->NAME, "channel");
   }
 }
 

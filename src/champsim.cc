@@ -30,8 +30,6 @@
 #include "phase_info.h"
 #include "tracereader.h"
 
-constexpr int DEADLOCK_CYCLE{500};
-
 const auto start_time = std::chrono::steady_clock::now();
 
 std::chrono::seconds elapsed_time() { return std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - start_time); }
@@ -74,6 +72,8 @@ phase_stats do_phase(const phase_info& phase, modules::environment_module& env, 
 
   const auto time_quantum = std::accumulate(std::cbegin(operables), std::cend(operables), champsim::chrono::clock::duration::max(),
                                             [](const auto acc, const operable& y) { return std::min(acc, y.clock_period); });
+
+  const int DEADLOCK_CYCLE = env.get_deadlock_cycles();
 
   bool livelock_trigger{false};
   uint64_t livelock_period{10000000};

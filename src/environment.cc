@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <map>
 #include <string>
 #include <vector>
@@ -164,6 +165,102 @@ bool is_ref_array(const json& arr) {
   return true;
 }
 
+// Populate a ModuleBuilder with parameters from a JSON node, with full type
+// support (typed objects, @-references, arrays, scalars) and recursive children.
+// This handles arbitrary nesting depth for submodules.
+void populate_builder(const json& node, ModuleBuilder& builder,
+                      const std::map<std::string, std::any>& modules_by_name,
+                      const std::map<std::string, std::string>& module_interfaces)
+{
+  const std::string& name = builder.get_name();
+
+  // Process all JSON parameters (skip reserved keys)
+  for (auto& [key, val] : node.items()) {
+    if (key == "name" || key == "module" || key == "model" || key == "children" || key == "_comment") continue;
+
+    if (val.is_null()) {
+      continue;
+    } else if (val.is_string() && is_ref(val.get<std::string>())) {
+      std::string rn = ref_name(val.get<std::string>());
+      auto mit = modules_by_name.find(rn);
+      if (mit == modules_by_name.end()) {
+        fmt::print("[EXPLICIT_ENVIRONMENT] ERROR: @-reference '{}' not found (used in '{}' param '{}')\n", rn, name, key);
+        std::exit(-1);
+      }
+      builder.add_raw_parameter(key, mit->second);
+    } else if (val.is_array() && is_ref_array(val)) {
+      std::vector<std::any> refs;
+      std::string ref_iface;
+      for (auto& elem : val) {
+        std::string rn = ref_name(elem.get<std::string>());
+        auto mit = modules_by_name.find(rn);
+        if (mit == modules_by_name.end()) {
+          fmt::print("[EXPLICIT_ENVIRONMENT] ERROR: @-reference '{}' not found (in array param '{}' of '{}')\n", rn, key, name);
+          std::exit(-1);
+        }
+        std::string curr_iface = module_interfaces.at(rn);
+        if (ref_iface.empty()) {
+          ref_iface = curr_iface;
+        } else if (curr_iface != ref_iface) {
+          fmt::print("[EXPLICIT_ENVIRONMENT] ERROR: mixed interface types in array '{}' of '{}': expected '{}', got '{}' for '{}'\n",
+                     key, name, ref_iface, curr_iface, rn);
+          std::exit(-1);
+        }
+        refs.push_back(mit->second);
+      }
+      builder.add_raw_parameter(key, interface_registry::make_vector(ref_iface, refs));
+    } else if (val.is_object()) {
+      std::any typed_val;
+      if (try_parse_typed_value(val, typed_val)) {
+        builder.add_raw_parameter(key, std::move(typed_val));
+      } else {
+        builder.add_parameter(key, val);
+      }
+    } else if (val.is_boolean()) {
+      builder.add_parameter(key, val.get<bool>());
+    } else if (val.is_number_integer()) {
+      builder.add_parameter(key, val.get<int64_t>());
+    } else if (val.is_number_float()) {
+      builder.add_parameter(key, val.get<double>());
+    } else if (val.is_string()) {
+      builder.add_parameter(key, val.get<std::string>());
+    } else if (val.is_array()) {
+      if (!val.empty() && val[0].is_string()) {
+        std::vector<std::string> sv;
+        for (auto& e : val) sv.push_back(e.get<std::string>());
+        builder.add_parameter(key, sv);
+      } else if (!val.empty() && val[0].is_array()) {
+        std::array<std::array<uint32_t, 3>, 16> dims{};
+        for (std::size_t i = 0; i < val.size() && i < 16; i++) {
+          for (std::size_t j = 0; j < val[i].size() && j < 3; j++) {
+            dims[i][j] = static_cast<uint32_t>(val[i][j].get<int64_t>());
+          }
+        }
+        builder.add_parameter(key, dims);
+      } else {
+        builder.add_parameter(key, val);
+      }
+    }
+  }
+
+  // Recursively handle nested children as submodules
+  if (node.contains("children")) {
+    for (auto& sub : node["children"]) {
+      if (!sub.contains("name") || !sub.contains("module") || !sub.contains("model")) {
+        fmt::print("[EXPLICIT_ENVIRONMENT] ERROR: submodule of '{}' missing 'name', 'module', or 'model'\n", name);
+        std::exit(-1);
+      }
+      std::string sub_iface = sub["module"].get<std::string>();
+      std::string sub_name = sub["name"].get<std::string>();
+      std::string sub_model = sub["model"].get<std::string>();
+
+      ModuleBuilder child_builder{sub_name, sub_model};
+      populate_builder(sub, child_builder, modules_by_name, module_interfaces);
+      builder.add_submodule(sub_iface, std::move(child_builder));
+    }
+  }
+}
+
 } // anonymous namespace
 
 // Register as "EXPLICIT_ENVIRONMENT"
@@ -196,101 +293,8 @@ champsim::environment::environment(ModuleBuilder builder)
 
     auto mod_builder = ModuleBuilder{name, model};
 
-    // Process all JSON parameters (skip reserved keys)
-    for (auto& [key, val] : child.items()) {
-      if (key == "name" || key == "module" || key == "model" || key == "children" || key == "_comment") continue;
-
-      if (val.is_null()) {
-        // Null value: skip — modules should use optional defaults for nullable params
-        continue;
-      } else if (val.is_string() && is_ref(val.get<std::string>())) {
-        // Single @-reference: resolve to pointer
-        std::string rn = ref_name(val.get<std::string>());
-        auto mit = modules_by_name_.find(rn);
-        if (mit == modules_by_name_.end()) {
-          fmt::print("[EXPLICIT_ENVIRONMENT] ERROR: @-reference '{}' not found (used in '{}' param '{}')\n", rn, name, key);
-          std::exit(-1);
-        }
-        mod_builder.add_raw_parameter(key, mit->second);
-      } else if (val.is_array() && is_ref_array(val)) {
-        // Array of @-references: resolve to vector of typed pointers
-        std::vector<std::any> refs;
-        std::string ref_iface;
-        for (auto& elem : val) {
-          std::string rn = ref_name(elem.get<std::string>());
-          auto mit = modules_by_name_.find(rn);
-          if (mit == modules_by_name_.end()) {
-            fmt::print("[EXPLICIT_ENVIRONMENT] ERROR: @-reference '{}' not found (in array param '{}' of '{}')\n", rn, key, name);
-            std::exit(-1);
-          }
-          std::string curr_iface = module_interfaces_.at(rn);
-          if (ref_iface.empty()) {
-            ref_iface = curr_iface;
-          } else if (curr_iface != ref_iface) {
-            fmt::print("[EXPLICIT_ENVIRONMENT] ERROR: mixed interface types in array '{}' of '{}': expected '{}', got '{}' for '{}'\n",
-                       key, name, ref_iface, curr_iface, rn);
-            std::exit(-1);
-          }
-          refs.push_back(mit->second);
-        }
-        mod_builder.add_raw_parameter(key, interface_registry::make_vector(ref_iface, refs));
-      } else if (val.is_object()) {
-        // Check for type-wrapped value, e.g. {"frequency": "4G"}, {"time": "250ps"}, {"null": "channel"}
-        std::any typed_val;
-        if (try_parse_typed_value(val, typed_val)) {
-          mod_builder.add_raw_parameter(key, std::move(typed_val));
-        } else {
-          // Store as json object (for complex nested params)
-          mod_builder.add_parameter(key, val);
-        }
-      } else if (val.is_boolean()) {
-        mod_builder.add_parameter(key, val.get<bool>());
-      } else if (val.is_number_integer()) {
-        mod_builder.add_parameter(key, val.get<int64_t>());
-      } else if (val.is_number_float()) {
-        mod_builder.add_parameter(key, val.get<double>());
-      } else if (val.is_string()) {
-        mod_builder.add_parameter(key, val.get<std::string>());
-      } else if (val.is_array()) {
-        // Non-ref array: check for string arrays, numeric arrays-of-arrays, etc.
-        if (!val.empty() && val[0].is_string()) {
-            std::vector<std::string> sv;
-            for (auto& e : val) sv.push_back(e.get<std::string>());
-            mod_builder.add_parameter(key, sv);
-        } else if (!val.empty() && val[0].is_array()) {
-          // Array of arrays → std::array<std::array<uint32_t, 3>, 16>
-          std::array<std::array<uint32_t, 3>, 16> dims{};
-          for (std::size_t i = 0; i < val.size() && i < 16; i++) {
-            for (std::size_t j = 0; j < val[i].size() && j < 3; j++) {
-              dims[i][j] = static_cast<uint32_t>(val[i][j].get<int64_t>());
-            }
-          }
-          mod_builder.add_parameter(key, dims);
-        } else {
-          mod_builder.add_parameter(key, val);
-        }
-      }
-    }
-
-    // Handle nested children generically: build submodules by interface type
-    if (child.contains("children")) {
-      for (auto& sub : child["children"]) {
-        std::string sub_iface = sub["module"].get<std::string>();
-        std::string sub_name = sub["name"].get<std::string>();
-        std::string sub_model = sub["model"].get<std::string>();
-
-        ModuleBuilder child_builder{sub_name, sub_model};
-        for (auto& [sk, sv] : sub.items()) {
-          if (sk == "name" || sk == "module" || sk == "model") continue;
-          if (sv.is_boolean()) child_builder.add_parameter(sk, sv.get<bool>());
-          else if (sv.is_number_integer()) child_builder.add_parameter(sk, sv.get<int64_t>());
-          else if (sv.is_number_float()) child_builder.add_parameter(sk, sv.get<double>());
-          else if (sv.is_string()) child_builder.add_parameter(sk, sv.get<std::string>());
-        }
-
-        mod_builder.add_submodule(sub_iface, std::move(child_builder));
-      }
-    }
+    // Populate parameters (with full type support) and submodules (recursive)
+    populate_builder(child, mod_builder, modules_by_name_, module_interfaces_);
 
     // Create the module via the interface registry
     std::any typed_ptr = interface_registry::create(iface, mod_builder, static_cast<environment_module*>(this));
@@ -307,6 +311,27 @@ champsim::environment::environment(ModuleBuilder builder)
   auto it = modules_by_type_.find("core");
   if (it != modules_by_type_.end()) {
     num_cpus_ = it->second.size();
+  }
+
+  // Compute deadlock threshold purely from parameter types.
+  // Every champsim::chrono::picoseconds parameter is a time value; the minimum
+  // is the time quantum and the maximum is the worst-case single latency.
+  // 2x max/min gives worst-case cycles, floored at 500.
+  {
+    int64_t min_ps = std::numeric_limits<int64_t>::max();
+    int64_t max_ps = 0;
+    for (auto& [name, bp] : builder_params_) {
+      for (auto& [key, val] : bp.get_parameters()) {
+        if (auto* p = std::any_cast<champsim::chrono::picoseconds>(&val)) {
+          if (p->count() > 0) {
+            min_ps = std::min(min_ps, p->count());
+            max_ps = std::max(max_ps, p->count());
+          }
+        }
+      }
+    }
+    if (min_ps < std::numeric_limits<int64_t>::max() && min_ps > 0)
+      deadlock_cycles_ = static_cast<int>(std::max(max_ps * 2 / min_ps, int64_t{500}));
   }
 }
 

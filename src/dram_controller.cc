@@ -36,21 +36,21 @@ MEMORY_CONTROLLER::MEMORY_CONTROLLER(champsim::modules::ModuleBuilder builder)
 {
   auto num_channels = address_mapping.channels();
   for (std::size_t i{0}; i < num_channels; ++i) {
-    channels.emplace_back(data_bus_period, builder.get_parameter<champsim::chrono::picoseconds>("mc_period"), builder.get_parameter<std::size_t>("t_rp"), builder.get_parameter<std::size_t>("t_rcd"),
-                          builder.get_parameter<std::size_t>("t_cas"), builder.get_parameter<std::size_t>("t_ras"),
+    channels.emplace_back(data_bus_period, builder.get_parameter<champsim::chrono::picoseconds>("mc_period"), builder.get_parameter<std::size_t>("n_rp"), builder.get_parameter<std::size_t>("n_rcd"),
+                          builder.get_parameter<std::size_t>("n_cas"), builder.get_parameter<std::size_t>("n_ras"),
                           builder.get_parameter<champsim::chrono::microseconds>("refresh_period"), builder.get_parameter<std::size_t>("refreshes_per_period"),
                           channel_width, builder.get_parameter<std::size_t>("rq_size"), builder.get_parameter<std::size_t>("wq_size"), address_mapping);
   }
 }
 
-DRAM_CHANNEL::DRAM_CHANNEL(champsim::chrono::picoseconds dbus_period, champsim::chrono::picoseconds mc_period, std::size_t t_rp, std::size_t t_rcd,
-                           std::size_t t_cas, std::size_t t_ras, champsim::chrono::microseconds refresh_period, std::size_t refreshes_per_period,
+DRAM_CHANNEL::DRAM_CHANNEL(champsim::chrono::picoseconds dbus_period, champsim::chrono::picoseconds mc_period, std::size_t n_rp, std::size_t n_rcd,
+                           std::size_t n_cas, std::size_t n_ras, champsim::chrono::microseconds refresh_period, std::size_t refreshes_per_period,
                            champsim::data::bytes width, std::size_t rq_size, std::size_t wq_size, DRAM_ADDRESS_MAPPING addr_mapper)
     : champsim::operable(mc_period), address_mapping(addr_mapper), WQ{wq_size}, RQ{rq_size}, channel_width(width),
-      DRAM_ROWS_PER_REFRESH(address_mapping.rows() / refreshes_per_period), tRP(t_rp * mc_period), tRCD(t_rcd * mc_period), tCAS(t_cas * mc_period),
-      tRAS(t_ras * mc_period), tREF(refresh_period / refreshes_per_period),
+      DRAM_ROWS_PER_REFRESH(address_mapping.rows() / refreshes_per_period), tRP(n_rp * mc_period), tRCD(n_rcd * mc_period), tCAS(n_cas * mc_period),
+      tRAS(n_ras * mc_period), tREF(refresh_period / refreshes_per_period),
       tRFC(std::chrono::duration_cast<champsim::chrono::clock::duration>(
-          std::sqrt(champsim::data::bits_per_byte * (double)champsim::data::gibibytes{density()}.count()) * mc_period * t_ras)),
+          std::sqrt(champsim::data::bits_per_byte * (double)champsim::data::gibibytes{density()}.count()) * mc_period * n_ras)),
       DRAM_DBUS_TURN_AROUND_TIME(tRAS),
       DRAM_DBUS_RETURN_TIME(std::chrono::duration_cast<champsim::chrono::clock::duration>(dbus_period * address_mapping.prefetch_size)),
       DRAM_DBUS_BANKGROUP_STALL(
