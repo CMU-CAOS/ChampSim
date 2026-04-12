@@ -318,8 +318,9 @@ champsim::environment::environment(ModuleBuilder builder)
   // is the time quantum and the maximum is the worst-case single latency.
   // 2x max/min gives worst-case cycles, floored at 500.
   {
-    int64_t min_ps = std::numeric_limits<int64_t>::max();
-    int64_t max_ps = 0;
+    using ps_rep = champsim::chrono::picoseconds::rep;
+    ps_rep min_ps = std::numeric_limits<ps_rep>::max();
+    ps_rep max_ps = 0;
     for (auto& [name, bp] : builder_params_) {
       for (auto& [key, val] : bp.get_parameters()) {
         if (auto* p = std::any_cast<champsim::chrono::picoseconds>(&val)) {
@@ -330,8 +331,8 @@ champsim::environment::environment(ModuleBuilder builder)
         }
       }
     }
-    if (min_ps < std::numeric_limits<int64_t>::max() && min_ps > 0)
-      deadlock_cycles_ = static_cast<int>(std::max(max_ps * 2 / min_ps, int64_t{500}));
+    if (min_ps < std::numeric_limits<ps_rep>::max() && min_ps > 0)
+      deadlock_cycles_ = static_cast<int>(std::max(max_ps * 2 / min_ps, ps_rep{500}));
   }
 }
 
