@@ -15,6 +15,7 @@ TEMPLATE_TEST_CASE("Caches issue translations", "", to_wq_MRP, to_rq_MRP, to_pq_
       return x.v_address == y.v_address;
     }};
     CACHE uut{champsim::modules::ModuleBuilder{"uut_cache", "DEFAULT_CACHE", champsim::defaults::default_l1d()}
+                  .add_parameter("mshr_size", static_cast<uint32_t>(8))
                   .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul.queues})
                   .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
                   .add_parameter("lower_translate", static_cast<champsim::modules::channel_module*>(&mock_translator.queues))
@@ -67,6 +68,7 @@ TEMPLATE_TEST_CASE("Translations work even if the addresses happen to be the sam
       return x.v_address == y.v_address;
     }};
     CACHE uut{champsim::modules::ModuleBuilder{"uut_cache", "DEFAULT_CACHE", champsim::defaults::default_l1d()}
+                  .add_parameter("mshr_size", static_cast<uint32_t>(8))
                   .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul.queues})
                   .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
                   .add_parameter("lower_translate", static_cast<champsim::modules::channel_module*>(&mock_translator.queues))

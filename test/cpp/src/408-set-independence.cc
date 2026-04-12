@@ -28,6 +28,7 @@ struct test_fixture {
 
   test_fixture(uint32_t set, uint32_t way)
       : uut(champsim::modules::ModuleBuilder{"uut_cache", "DEFAULT_CACHE", champsim::defaults::default_l2c()}
+                .add_parameter("mshr_size", static_cast<uint32_t>(8))
                 .add_parameter("num_sets", static_cast<uint32_t>(set))
                 .add_parameter("num_ways", static_cast<uint32_t>(way))
                 .add_parameter("offset_bits", champsim::data::bits{LOG2_BLOCK_SIZE})
