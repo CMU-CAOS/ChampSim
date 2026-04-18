@@ -11,12 +11,17 @@ struct bypass_replacement : champsim::modules::replacement {
 
   bypass_replacement(CACHE* c) {(void)c;}
 
-  long find_victim(uint32_t, uint64_t, long, const champsim::cache_block*, champsim::address, champsim::address addr, access_type)
+  void initialize_replacement() override {}
+  long find_victim(uint32_t, uint64_t, long, const champsim::cache_block*, champsim::address, champsim::address addr, access_type) override
   {
     if (addr == champsim::address{bypass_addr})
       return 1L;
     return 0L;
   }
+
+  void update_replacement_state(uint32_t, long, long, champsim::address, champsim::address, champsim::address, access_type, bool) override {}
+  void replacement_cache_fill(uint32_t, long, long, champsim::address, champsim::address, champsim::address, access_type) override {}
+  void replacement_final_stats() override {}
 
   bypass_replacement(champsim::modules::ModuleBuilder) {}
 };

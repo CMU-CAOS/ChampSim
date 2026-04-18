@@ -14,9 +14,12 @@ std::map<champsim::modules::cache_module*, std::vector<champsim::address>> addre
 struct address_collector : champsim::modules::prefetcher {
   using prefetcher::prefetcher;
 
+  champsim::modules::cache_module* parent_ = nullptr;
+
+  void prefetcher_initialize() override {}
   uint32_t prefetcher_cache_operate(champsim::address addr, champsim::address, bool, bool, access_type, uint32_t metadata_in) override
   {
-    ::address_operate_collector[intern_].push_back(addr);
+    ::address_operate_collector[parent_].push_back(addr);
     return metadata_in;
   }
 
@@ -25,7 +28,12 @@ struct address_collector : champsim::modules::prefetcher {
     return metadata_in;
   }
 
-  address_collector(champsim::modules::ModuleBuilder) {}
+  void prefetcher_cycle_operate() override {}
+  void prefetcher_final_stats() override {}
+  void prefetcher_branch_operate(champsim::address, uint8_t, champsim::address) override {}
+
+  address_collector(champsim::modules::ModuleBuilder builder)
+    : parent_(builder.get_parent<champsim::modules::cache_module>()) {}
 };
 champsim::modules::prefetcher::register_module<address_collector> address_collect_register("address_collector");
 

@@ -47,8 +47,11 @@ jobs:
     - name: Build
       run: make
 
-    - name: Run valgrind
+    - name: Run valgrind (all modules)
       run: |
         valgrind --leak-check=full --show-leak-kinds=all --error-exitcode=1 \
-          ./bin/champsim -w1000 -i1000 \
-          -- <(curl -s https://dpc3.compas.cs.stonybrook.edu/champsim-traces/speccpu/400.perlbench-41B.champsimtrace.xz | xz -dc)
+          ./bin/champsim --config test/config/all-modules.json -w1000 -i1000 \
+          -- <(curl -s https://dpc3.compas.cs.stonybrook.edu/champsim-traces/speccpu/400.perlbench-41B.champsimtrace.xz | xz -dc) \
+             <(curl -s https://dpc3.compas.cs.stonybrook.edu/champsim-traces/speccpu/400.perlbench-41B.champsimtrace.xz | xz -dc) \
+             <(curl -s https://dpc3.compas.cs.stonybrook.edu/champsim-traces/speccpu/400.perlbench-41B.champsimtrace.xz | xz -dc) \
+             <(curl -s https://dpc3.compas.cs.stonybrook.edu/champsim-traces/speccpu/400.perlbench-41B.champsimtrace.xz | xz -dc)

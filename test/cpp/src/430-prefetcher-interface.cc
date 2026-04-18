@@ -13,19 +13,27 @@ std::map<champsim::modules::cache_module*, int> fill_interface_discerner;
 struct dual_interface : champsim::modules::prefetcher {
   using prefetcher::prefetcher;
 
+    champsim::modules::cache_module* parent_ = nullptr;
+
+    void prefetcher_initialize() override {}
     uint32_t prefetcher_cache_operate(champsim::address, champsim::address, bool, bool, access_type, uint32_t metadata_in) override
     {
-      ::operate_interface_discerner[intern_] = 1;
+      ::operate_interface_discerner[parent_] = 1;
       return metadata_in;
     }
 
     uint32_t prefetcher_cache_fill(champsim::address, long, long, bool, champsim::address, uint32_t metadata_in) override
     {
-      ::fill_interface_discerner[intern_] = 1;
+      ::fill_interface_discerner[parent_] = 1;
       return metadata_in;
     }
 
-    dual_interface(champsim::modules::ModuleBuilder) {}
+    void prefetcher_cycle_operate() override {}
+    void prefetcher_final_stats() override {}
+    void prefetcher_branch_operate(champsim::address, uint8_t, champsim::address) override {}
+
+    dual_interface(champsim::modules::ModuleBuilder builder)
+      : parent_(builder.get_parent<champsim::modules::cache_module>()) {}
   };
 
   champsim::modules::prefetcher::register_module<dual_interface> dual_interface_register("dual_interface_2");

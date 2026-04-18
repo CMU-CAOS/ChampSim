@@ -15,27 +15,38 @@ std::map<champsim::modules::cache_module*, int> fill_override_interface_discerne
 struct dual_interface : champsim::modules::replacement {
   using replacement::replacement;
 
+    champsim::modules::cache_module* parent_ = nullptr;
+
     dual_interface(CACHE* c) {(void)c;}
 
+    void initialize_replacement() override {}
     long find_victim(uint32_t, uint64_t, long, const CACHE::BLOCK*, champsim::address, champsim::address, access_type) override
     {
-      ::victim_interface_discerner[intern_] = 1;
+      ::victim_interface_discerner[parent_] = 1;
       return 0;
     }
 
     void update_replacement_state(uint32_t, long, long, champsim::address, champsim::address, champsim::address, access_type, bool) override
     {
-      ::update_interface_discerner[intern_] = 1;
+      ::update_interface_discerner[parent_] = 1;
     }
 
-    dual_interface(champsim::modules::ModuleBuilder) {}
+    void replacement_cache_fill(uint32_t, long, long, champsim::address, champsim::address, champsim::address, access_type) override {}
+    void replacement_final_stats() override {}
+
+    dual_interface(champsim::modules::ModuleBuilder builder)
+      : parent_(builder.get_parent<champsim::modules::cache_module>()) {}
   };
 
   struct fill_selection : champsim::modules::replacement
   {
     using replacement::replacement;
+
+    champsim::modules::cache_module* parent_ = nullptr;
+
     fill_selection(CACHE* c) {(void)c;}
 
+    void initialize_replacement() override {}
     long find_victim(uint32_t, uint64_t, long, const CACHE::BLOCK*, champsim::address, champsim::address, access_type) override
     {
       return 0;
@@ -43,15 +54,18 @@ struct dual_interface : champsim::modules::replacement {
 
     void update_replacement_state(uint32_t, long, long, champsim::address, champsim::address, champsim::address, access_type, bool) override
     {
-      ::update_interface_discerner[intern_] = 1;
+      ::update_interface_discerner[parent_] = 1;
     }
 
     void replacement_cache_fill(uint32_t, long, long, champsim::address, champsim::address, champsim::address, access_type) override
     {
-      ::fill_override_interface_discerner[intern_] = 1;
+      ::fill_override_interface_discerner[parent_] = 1;
     }
 
-    fill_selection(champsim::modules::ModuleBuilder) {}
+    void replacement_final_stats() override {}
+
+    fill_selection(champsim::modules::ModuleBuilder builder)
+      : parent_(builder.get_parent<champsim::modules::cache_module>()) {}
   };
 }
 

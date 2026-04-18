@@ -18,6 +18,7 @@ struct gshare : champsim::modules::branch_predictor {
   using branch_predictor::branch_predictor;
 
   static std::size_t gs_table_hash(champsim::address ip, std::bitset<GLOBAL_HISTORY_LENGTH> bh_vector);
+  void initialize_branch_predictor() override {}
   bool predict_branch(champsim::address ip, champsim::address predicted_target, bool always_taken, uint8_t branch_type) override;
   void last_branch_result(champsim::address ip, champsim::address branch_target, bool taken, uint8_t branch_type) override;
 

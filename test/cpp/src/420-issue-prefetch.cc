@@ -15,18 +15,26 @@ std::map<champsim::modules::cache_module*, std::vector<test::pref_cache_operate_
 struct hit_collector : champsim::modules::prefetcher {
   using prefetcher::prefetcher;
 
-  uint32_t prefetcher_cache_operate(champsim::address addr, champsim::address ip, bool cache_hit, bool useful_prefetch, access_type type, uint32_t metadata_in)
+  champsim::modules::cache_module* parent_ = nullptr;
+
+  void prefetcher_initialize() override {}
+  uint32_t prefetcher_cache_operate(champsim::address addr, champsim::address ip, bool cache_hit, bool useful_prefetch, access_type type, uint32_t metadata_in) override
   {
-    ::prefetch_hit_collector[intern_].push_back({addr, ip, cache_hit, useful_prefetch, type, metadata_in});
+    ::prefetch_hit_collector[parent_].push_back({addr, ip, cache_hit, useful_prefetch, type, metadata_in});
     return metadata_in;
   }
 
-  uint32_t prefetcher_cache_fill(champsim::address, long, long, bool, champsim::address, uint32_t metadata_in)
+  uint32_t prefetcher_cache_fill(champsim::address, long, long, bool, champsim::address, uint32_t metadata_in) override
   {
     return metadata_in;
   }
 
-  hit_collector(champsim::modules::ModuleBuilder) {}
+  void prefetcher_cycle_operate() override {}
+  void prefetcher_final_stats() override {}
+  void prefetcher_branch_operate(champsim::address, uint8_t, champsim::address) override {}
+
+  hit_collector(champsim::modules::ModuleBuilder builder)
+    : parent_(builder.get_parent<champsim::modules::cache_module>()) {}
 };
 
 champsim::modules::prefetcher::register_module<hit_collector> hit_collector_register("hit_collector");

@@ -47,6 +47,8 @@ struct spp_dev : public champsim::modules::prefetcher {
   constexpr static uint32_t GLOBAL_COUNTER_MAX = ((1 << GLOBAL_COUNTER_BIT) - 1);
   constexpr static std::size_t MAX_GHR_ENTRY = 8;
 
+  champsim::modules::cache_module* cache_ = nullptr;
+
   using prefetcher::prefetcher;
   uint32_t prefetcher_cache_operate(champsim::address addr, champsim::address ip, bool cache_hit, bool useful_prefetch, access_type type,
                                     uint32_t metadata_in) override;
@@ -55,6 +57,7 @@ struct spp_dev : public champsim::modules::prefetcher {
   void prefetcher_initialize() override;
   void prefetcher_cycle_operate() override;
   void prefetcher_final_stats() override;
+  void prefetcher_branch_operate(champsim::address ip, uint8_t branch_type, champsim::address branch_target) override {}
 
   enum FILTER_REQUEST { SPP_L2C_PREFETCH, SPP_LLC_PREFETCH, L2C_DEMAND, L2C_EVICT }; // Request type for prefetch filter
   static uint64_t get_hash(uint64_t key);
@@ -175,7 +178,8 @@ struct spp_dev : public champsim::modules::prefetcher {
   PREFETCH_FILTER FILTER;
   GLOBAL_REGISTER GHR;
 
-  spp_dev(champsim::modules::ModuleBuilder builder) {};
+  spp_dev(champsim::modules::ModuleBuilder builder)
+    : cache_(builder.get_parent<champsim::modules::cache_module>()) {}
 };
 
 #endif

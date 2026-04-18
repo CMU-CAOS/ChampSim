@@ -17,28 +17,34 @@ std::map<champsim::modules::cache_module*, std::vector<test::repl_fill_interface
 struct update_state_collector : champsim::modules::replacement {
   using replacement::replacement;
 
+  champsim::modules::cache_module* parent_ = nullptr;
+
   update_state_collector(CACHE* c) {(void)c;}
 
-  long find_victim(uint32_t, uint64_t, long, const champsim::cache_block*, champsim::address, champsim::address, access_type)
+  void initialize_replacement() override {}
+  long find_victim(uint32_t, uint64_t, long, const champsim::cache_block*, champsim::address, champsim::address, access_type) override
   {
     return 0;
   }
 
   void update_replacement_state(uint32_t triggering_cpu, long set, long way, champsim::address full_addr, champsim::address ip, champsim::address victim_addr,
-                                access_type type, bool hit)
+                                access_type type, bool hit) override
   {
-    auto usc_it = ::replacement_update_state_collector.try_emplace(intern_);
+    auto usc_it = ::replacement_update_state_collector.try_emplace(parent_);
     usc_it.first->second.push_back({triggering_cpu, set, way, full_addr, ip, victim_addr, type, hit});
   }
 
   void replacement_cache_fill(uint32_t triggering_cpu, long set, long way, champsim::address full_addr, champsim::address ip, champsim::address victim_addr,
-                              access_type type)
+                              access_type type) override
   {
-    auto cfc_it = ::replacement_cache_fill_collector.try_emplace(intern_);
+    auto cfc_it = ::replacement_cache_fill_collector.try_emplace(parent_);
     cfc_it.first->second.push_back({triggering_cpu, set, way, full_addr, ip, victim_addr, type});
   }
 
-  update_state_collector(champsim::modules::ModuleBuilder) {}
+  void replacement_final_stats() override {}
+
+  update_state_collector(champsim::modules::ModuleBuilder builder)
+    : parent_(builder.get_parent<champsim::modules::cache_module>()) {}
 };
 
 champsim::modules::replacement::register_module<update_state_collector> update_state_collect_register("update_state_collector");

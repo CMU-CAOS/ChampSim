@@ -37,9 +37,9 @@ void ip_stride::prefetcher_cycle_operate()
     champsim::address pf_address{champsim::block_number{old_pf_address} + stride};
 
     // If the next step would exceed the degree or run off the page, stop
-    if (intern_->is_virtual_prefetch() || champsim::page_number{pf_address} == champsim::page_number{old_pf_address}) {
+    if (cache_->is_virtual_prefetch() || champsim::page_number{pf_address} == champsim::page_number{old_pf_address}) {
       // check the MSHR occupancy to decide if we're going to prefetch to this level or not
-      const bool mshr_under_light_load = intern_->get_mshr_occupancy_ratio() < 0.5;
+      const bool mshr_under_light_load = cache_->get_mshr_occupancy_ratio() < 0.5;
       const bool success = prefetch_line(pf_address, mshr_under_light_load, 0);
       if (success)
         active_lookahead = {pf_address, stride, degree - 1};

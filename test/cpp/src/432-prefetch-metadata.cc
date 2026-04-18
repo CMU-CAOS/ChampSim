@@ -16,28 +16,40 @@ std::map<champsim::modules::cache_module*, std::vector<uint32_t>> metadata_fill_
 struct metadata_collector : champsim::modules::prefetcher {
   using prefetcher::prefetcher;
 
-  uint32_t prefetcher_cache_operate(champsim::address, champsim::address, bool, bool, access_type, uint32_t metadata_in) {
-    auto it = test::metadata_operate_collector.try_emplace(intern_);
+  champsim::modules::cache_module* parent_ = nullptr;
+
+  void prefetcher_initialize() override {}
+  uint32_t prefetcher_cache_operate(champsim::address, champsim::address, bool, bool, access_type, uint32_t metadata_in) override {
+    auto it = test::metadata_operate_collector.try_emplace(parent_);
     it.first->second.push_back(metadata_in);
     return metadata_in;
   }
 
-  uint32_t prefetcher_cache_fill(champsim::address, long, long, bool, champsim::address, uint32_t metadata_in)
+  uint32_t prefetcher_cache_fill(champsim::address, long, long, bool, champsim::address, uint32_t metadata_in) override
   {
-    auto it = test::metadata_fill_collector.try_emplace(intern_);
+    auto it = test::metadata_fill_collector.try_emplace(parent_);
     it.first->second.push_back(metadata_in);
     return metadata_in;
   }
 
-  metadata_collector(champsim::modules::ModuleBuilder) {}
+  void prefetcher_cycle_operate() override {}
+  void prefetcher_final_stats() override {}
+  void prefetcher_branch_operate(champsim::address, uint8_t, champsim::address) override {}
+
+  metadata_collector(champsim::modules::ModuleBuilder builder)
+    : parent_(builder.get_parent<champsim::modules::cache_module>()) {}
 };
 
 template <uint32_t to_emit>
 struct metadata_fill_emitter : champsim::modules::prefetcher {
   using prefetcher::prefetcher;
 
-  uint32_t prefetcher_cache_operate(champsim::address, champsim::address, bool, bool, access_type, uint32_t metadata_in) { return metadata_in; }
-  uint32_t prefetcher_cache_fill(champsim::address, long, long, bool, champsim::address, uint32_t) { return to_emit; }
+  void prefetcher_initialize() override {}
+  uint32_t prefetcher_cache_operate(champsim::address, champsim::address, bool, bool, access_type, uint32_t metadata_in) override { return metadata_in; }
+  uint32_t prefetcher_cache_fill(champsim::address, long, long, bool, champsim::address, uint32_t) override { return to_emit; }
+  void prefetcher_cycle_operate() override {}
+  void prefetcher_final_stats() override {}
+  void prefetcher_branch_operate(champsim::address, uint8_t, champsim::address) override {}
 
   metadata_fill_emitter(champsim::modules::ModuleBuilder) {}
 };

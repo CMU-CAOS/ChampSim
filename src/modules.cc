@@ -35,12 +35,6 @@ namespace champsim::modules {
   }
   // LCOV_EXCL_STOP
 
-  //replacement cache fill
-  void replacement::replacement_cache_fill([[maybe_unused]] uint32_t triggering_cpu, [[maybe_unused]] long set, [[maybe_unused]] long way, [[maybe_unused]] champsim::address full_addr, 
-                                                  [[maybe_unused]] champsim::address ip, [[maybe_unused]] champsim::address victim_addr, [[maybe_unused]] access_type type) {
-    intern_->impl_update_replacement_state(triggering_cpu,set,way,full_addr,ip,victim_addr,type,false);
-  }
-
 }
 
 // Interface registrations: map interface name strings to module_base specializations

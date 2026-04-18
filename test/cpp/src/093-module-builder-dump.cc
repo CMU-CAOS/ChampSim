@@ -12,6 +12,13 @@ struct dummy_module : public champsim::modules::prefetcher {
   dummy_module(ModuleBuilder builder)
     : val_a(builder.get_parameter<int>("param_a")),
       val_b(builder.get_parameter<int>("param_b", true, 42)) {}
+
+  void prefetcher_initialize() override {}
+  uint32_t prefetcher_cache_operate(champsim::address, champsim::address, bool, bool, access_type, uint32_t metadata_in) override { return metadata_in; }
+  uint32_t prefetcher_cache_fill(champsim::address, long, long, bool, champsim::address, uint32_t metadata_in) override { return metadata_in; }
+  void prefetcher_cycle_operate() override {}
+  void prefetcher_final_stats() override {}
+  void prefetcher_branch_operate(champsim::address, uint8_t, champsim::address) override {}
 };
 
 // Register the dummy module so create_instance can find it

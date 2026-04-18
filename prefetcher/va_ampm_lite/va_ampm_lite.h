@@ -32,6 +32,8 @@ public:
     explicit region_type(champsim::page_number allocate_vpn) : vpn(allocate_vpn), access_map(PAGE_SIZE / BLOCK_SIZE), prefetch_map(PAGE_SIZE / BLOCK_SIZE) {}
   };
 
+  champsim::modules::cache_module* cache_ = nullptr;
+
   using prefetcher::prefetcher;
 
   struct ampm_indexer {
@@ -49,10 +51,13 @@ public:
                                     uint32_t metadata_in) override;
   uint32_t prefetcher_cache_fill(champsim::address addr, long set, long way, bool prefetch, champsim::address evicted_addr, uint32_t metadata_in) override;
 
-  va_ampm_lite(champsim::modules::ModuleBuilder) {};
+  va_ampm_lite(champsim::modules::ModuleBuilder builder)
+    : cache_(builder.get_parent<champsim::modules::cache_module>()) {}
 
-  // void prefetcher_cycle_operate() {}
-  // void prefetcher_final_stats() {}
+  void prefetcher_initialize() override {}
+  void prefetcher_cycle_operate() override {}
+  void prefetcher_final_stats() override {}
+  void prefetcher_branch_operate(champsim::address /*ip*/, uint8_t /*branch_type*/, champsim::address /*branch_target*/) override {}
 };
 
 #endif

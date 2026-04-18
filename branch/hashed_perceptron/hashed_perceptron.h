@@ -47,6 +47,7 @@ class hashed_perceptron : public champsim::modules::branch_predictor
   perceptron_result last_result{};
 
 public:
+  void initialize_branch_predictor() override {}
   bool predict_branch(champsim::address pc, champsim::address predicted_target, bool always_taken, uint8_t branch_type) override;
   void last_branch_result(champsim::address pc, champsim::address branch_target, bool taken, uint8_t branch_type) override;
   void adjust_threshold(bool correct);

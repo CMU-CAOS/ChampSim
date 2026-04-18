@@ -45,10 +45,27 @@
 
 //class CACHE;
 //class O3_CPU;
+/**
+ * The ChampSim runtime module system.
+ *
+ * This namespace contains all module interfaces and the infrastructure for
+ * constructing, registering, and instantiating modules at runtime. Module
+ * authors interact primarily with the four user-facing interfaces
+ * (prefetcher, replacement, branch_predictor, btb), the ModuleBuilder for
+ * construction, and the register_module template for registration.
+ */
 namespace champsim::modules {
 
 struct environment_module;
 
+/**
+ * Provides configuration parameters and parent access to modules during construction.
+ *
+ * Every module constructor receives a ModuleBuilder. Use it to:
+ * - Retrieve parameters from the JSON config via get_parameter().
+ * - Access the parent module (e.g. the cache a prefetcher is attached to) via get_parent().
+ * - Query the module's name and model via get_name() and get_model().
+ */
 struct ModuleBuilder {
   private:
   std::map<std::string,std::any> parameters;
@@ -118,6 +135,20 @@ struct ModuleBuilder {
     return fmt::format("  [{}] {} = <unprintable> ({})\n", mod, name, tag);
   }
 
+  /**
+   * Retrieve a configuration parameter by name.
+   *
+   * Parameters are set in the JSON configuration file. For example, if the config
+   * contains ``{"model": "my_pref", "degree": 4}``, then
+   * ``get_parameter<int>("degree")`` returns 4.
+   *
+   * \tparam T The expected type of the parameter.
+   * \param name The parameter name as it appears in the JSON config.
+   * \param optional If true, returns default_value when the parameter is absent.
+   *                 If false (the default), the simulator exits with an error.
+   * \param default_value The value to return when the parameter is absent and optional is true.
+   * \return The parameter value, or default_value if absent and optional.
+   */
   template<typename T>
   T get_parameter(std::string name, bool optional = false, T default_value = T{}) const {
     if(auto it = parameters.find(name); it != parameters.end()) {
@@ -168,9 +199,20 @@ struct ModuleBuilder {
     return *this;
   }
 
+  /** Return the model name of this module (e.g. ``"ip_stride"``). */
   std::string get_model() const { return model; }
+  /** Return the instance name of this module (e.g. ``"cpu0_L2C.ip_stride"``). */
   std::string get_name() const { return module_name; }
 
+  /**
+   * Return a typed pointer to this module's parent.
+   *
+   * For prefetchers and replacement policies the parent is a cache_module.
+   * For branch predictors and BTBs the parent is a core_module.
+   *
+   * \tparam T The parent module type (e.g. ``cache_module`` or ``core_module``).
+   * \return A pointer to the parent module.
+   */
   template<typename T>
   T* get_parent() const { return std::any_cast<T*>(parent); }
   // Type for storing per-model builders (model_name -> builder)
@@ -307,11 +349,19 @@ public:
   }
 };
 
-//Module base, defining the base type B for the module and component type C that it is used by
+/**
+ * Base class for all module interfaces.
+ *
+ * Provides the static module registry, instance creation, and the
+ * register_module helper. Module interfaces (prefetcher, replacement, etc.)
+ * inherit from a specialization of this template.
+ *
+ * \tparam B The interface base type (e.g. ``prefetcher``).
+ * \tparam C The parent component type (e.g. ``cache_module``).
+ */
 template<typename B, typename C>
 struct module_base {
     std::string NAME;
-    C* intern_;
     using function_type = typename std::function<std::unique_ptr<B>(ModuleBuilder builder)>;
 
     private:
@@ -333,9 +383,8 @@ struct module_base {
     }
 
     public:
-    //bind the internal pointer to its managing component
-    //should probably remove this call
-    void bind(C* bind_arg) {intern_ = bind_arg;};
+    //no-op bind; overridden in types that need a parent pointer (e.g. prefetcher)
+    void bind(C*) {}
 
     //create an instance of the module, which will be stored in this base-module-type's static list
     //parent is set on the builder before validation and construction
@@ -395,10 +444,23 @@ struct module_base {
         }
     }
 
-    //register a derived type D of base type B and constructor with arguments Params with the module system
-    //this is necessary to be able to create instances
+    /**
+     * Register a concrete module implementation with the module system.
+     *
+     * Place a static instance of this struct in your ``.cc`` file to make
+     * your module available by name::
+     *
+     *     champsim::modules::prefetcher::register_module<my_pref> reg("my_pref");
+     *
+     * \tparam D The concrete module class to register.
+     */
     template<typename D> 
     struct register_module {
+      /**
+       * Register the module under the given model name.
+       *
+       * \param model_name The name used in JSON config to select this module.
+       */
       register_module(std::string model_name) {
           
           std::function<std::unique_ptr<B>(ModuleBuilder builder)> create_module([](ModuleBuilder builder){return std::unique_ptr<B>(new D(builder));});
@@ -435,85 +497,157 @@ struct module_base {
 
 };
 
+  /**
+   * Interface for CPU core modules.
+   *
+   * The default implementation is O3_CPU. Branch predictors and BTBs are
+   * attached to a core_module.
+   */
   struct core_module: public module_base<core_module,environment_module>, public operable {
-    //interface for core module
+    /** \cond INTERNAL */
     virtual void push_instruction(ooo_model_instr instr) = 0;
     virtual std::size_t instructions_requested() = 0;
-    virtual uint64_t sim_instr() const = 0;
-    virtual uint8_t get_cpu_num() const = 0;
-    virtual uint64_t sim_cycle() const = 0;
-
     core_module(champsim::chrono::picoseconds clock_period_) : operable(clock_period_) {}
     virtual ~core_module() = default;
-
-    using stats_type = cpu_stats;
-    virtual stats_type get_sim_stats() const = 0;
-    virtual stats_type get_roi_stats() const = 0;
-
     virtual void quiet(bool enable) = 0;
+    /** \endcond */
+
+    /** Return the number of instructions simulated so far. */
+    virtual uint64_t sim_instr() const = 0;
+    /** Return this core's CPU index. */
+    virtual uint8_t get_cpu_num() const = 0;
+    /** Return the number of cycles simulated so far. */
+    virtual uint64_t sim_cycle() const = 0;
+
+    /** The stats type returned by get_sim_stats() and get_roi_stats(). */
+    using stats_type = cpu_stats;
+    /** Return simulation-wide statistics for this core. */
+    virtual stats_type get_sim_stats() const = 0;
+    /** Return region-of-interest statistics for this core. */
+    virtual stats_type get_roi_stats() const = 0;
   };
 
+  /**
+   * Interface for cache modules.
+   *
+   * The default implementation is CACHE. Prefetchers and replacement policies
+   * are attached to a cache_module. Module authors can query cache geometry
+   * and queue occupancy through this interface.
+   */
   struct cache_module: public module_base<cache_module,environment_module>, public operable {
-    //interface for cache module
+    /** \cond INTERNAL */
     cache_module(champsim::chrono::picoseconds clock_period_) : operable(clock_period_) {}
     virtual ~cache_module() = default;
-
-    using stats_type = cache_stats;
     virtual champsim::bandwidth::maximum_type get_max_tag_bandwidth() const = 0;
-    virtual stats_type get_sim_stats() const = 0;
-    virtual stats_type get_roi_stats() const = 0;
-
-    virtual bool is_virtual_prefetch() const = 0;
-    virtual bool prefetch_line(champsim::address pf_addr, bool fill_this_level, uint32_t prefetch_metadata) = 0;
     virtual void impl_update_replacement_state(uint32_t triggering_cpu, long set, long way, champsim::address full_addr, champsim::address ip,
                                        champsim::address victim_addr, access_type type, bool hit) const = 0;
     virtual void impl_prefetcher_branch_operate(champsim::address ip, uint8_t branch_type, champsim::address target) const = 0;
+    /** \endcond */
 
+    /** The stats type returned by get_sim_stats() and get_roi_stats(). */
+    using stats_type = cache_stats;
+    /** Return simulation-wide statistics for this cache. */
+    virtual stats_type get_sim_stats() const = 0;
+    /** Return region-of-interest statistics for this cache. */
+    virtual stats_type get_roi_stats() const = 0;
+
+    /** Return true if this cache uses virtual addresses for prefetching. */
+    virtual bool is_virtual_prefetch() const = 0;
+    /**
+     * Issue a prefetch into this cache.
+     *
+     * \param pf_addr The address to prefetch.
+     * \param fill_this_level If true, fill this cache level; otherwise fill the next level.
+     * \param prefetch_metadata Metadata to associate with the prefetch.
+     * \return True if the prefetch was successfully enqueued.
+     */
+    virtual bool prefetch_line(champsim::address pf_addr, bool fill_this_level, uint32_t prefetch_metadata) = 0;
+
+    /** Invalidate the cache line at the given address. Returns the way index, or -1. */
     virtual long invalidate_entry(champsim::address inval_addr) = 0;
+    /** Return the current number of occupied MSHR entries. */
     virtual std::size_t get_mshr_occupancy() const = 0;
+    /** Return the total MSHR capacity. */
     virtual std::size_t get_mshr_size() const = 0;
+    /** Return the MSHR occupancy as a ratio in [0, 1]. */
     virtual double get_mshr_occupancy_ratio() const = 0;
 
+    /** Return per-channel read queue occupancy. */
     virtual std::vector<std::size_t> get_rq_occupancy() const = 0;
+    /** Return per-channel read queue capacity. */
     virtual std::vector<std::size_t> get_rq_size() const = 0;
+    /** Return per-channel read queue occupancy as a ratio in [0, 1]. */
     virtual std::vector<double> get_rq_occupancy_ratio() const = 0;
 
+    /** Return per-channel write queue occupancy. */
     virtual std::vector<std::size_t> get_wq_occupancy() const = 0;
+    /** Return per-channel write queue capacity. */
     virtual std::vector<std::size_t> get_wq_size() const = 0;
+    /** Return per-channel write queue occupancy as a ratio in [0, 1]. */
     virtual std::vector<double> get_wq_occupancy_ratio() const = 0;
 
+    /** Return per-channel prefetch queue occupancy. */
     virtual std::vector<std::size_t> get_pq_occupancy() const = 0;
+    /** Return per-channel prefetch queue capacity. */
     virtual std::vector<std::size_t> get_pq_size() const = 0;
+    /** Return per-channel prefetch queue occupancy as a ratio in [0, 1]. */
     virtual std::vector<double> get_pq_occupancy_ratio() const = 0;
 
+    /** Return the number of sets in this cache. */
     virtual std::size_t num_sets() const = 0;
+    /** Return the number of ways in this cache. */
     virtual std::size_t num_ways() const = 0;
+    /** Return the number of offset bits (log2 of block size). */
     virtual champsim::data::bits get_offset_bits() const = 0;
   };
 
+  /**
+   * Interface for DRAM memory controller modules.
+   *
+   * The default implementation is MEMORY_CONTROLLER. Stats can be retrieved
+   * per channel.
+   */
   struct memory_controller_module: public module_base<memory_controller_module,environment_module>, public operable {
-    //interface for memory controller module
+    /** \cond INTERNAL */
     memory_controller_module(champsim::chrono::picoseconds clock_period_) : operable(clock_period_) {}
     virtual ~memory_controller_module() = default;
+    /** \endcond */
 
+    /** The stats type returned by get_sim_stats() and get_roi_stats(). */
     using stats_type = dram_stats;
+    /** Return the number of DRAM channels. */
     virtual std::size_t get_num_channels() const = 0;
+    /** Return simulation-wide statistics for the given channel. */
     virtual stats_type get_sim_stats(std::size_t channel_no) const = 0;
+    /** Return region-of-interest statistics for the given channel. */
     virtual stats_type get_roi_stats(std::size_t channel_no) const = 0;
 
+    /** Return the total DRAM size. */
     virtual champsim::data::bytes size() const = 0;
   }; 
 
+  /**
+   * Interface for page table walker modules.
+   */
   struct page_table_walker_module: public module_base<page_table_walker_module,environment_module>, public operable {
-    //interface for page table walker module
+    /** \cond INTERNAL */
     page_table_walker_module(champsim::chrono::picoseconds clock_period_) : operable(clock_period_) {}
     virtual ~page_table_walker_module() = default;
+    /** \endcond */
   }; 
 
+  /**
+   * Interface for channel modules.
+   *
+   * Channels connect caches to their lower-level memory. They buffer
+   * requests in read (RQ), write (WQ), and prefetch (PQ) queues.
+   */
   struct channel_module: public module_base<channel_module,environment_module> {
-    //interface for channel module
+    /** \cond INTERNAL */
     using request_type = champsim::request;
     using response_type = champsim::response;
+    /** \endcond */
+    /** The stats type returned by get_sim_stats() and get_roi_stats(). */
     using stats_type = champsim::cache_queue_stats;
 
     virtual bool add_rq(const request_type& packet) = 0;
@@ -541,6 +675,9 @@ struct module_base {
     virtual ~channel_module() = default;
   }; 
 
+  /**
+   * Interface for virtual memory modules.
+   */
   struct vmem_module: public module_base<vmem_module,environment_module> {
     virtual ~vmem_module() = default;
     virtual std::size_t available_ppages() const = 0;
@@ -551,91 +688,262 @@ struct module_base {
     virtual std::size_t get_pt_levels() const = 0;
   };
 
+  /**
+   * Interface for memory prefetcher modules.
+   *
+   * Prefetchers are attached to a cache (cache_module). Implement the six
+   * virtual methods below and register with register_module to create a
+   * custom prefetcher. Use prefetch_line() to issue prefetch requests.
+   */
   struct prefetcher: public module_base<prefetcher,cache_module> {
 
       virtual ~prefetcher() = default;
 
-      //prefetcher initialize
-      virtual void prefetcher_initialize() {}
+      /**
+       * Called when the cache is initialized.
+       * Use this to set up dynamic data structures.
+       */
+      virtual void prefetcher_initialize() = 0;
 
-      //prefetcher cache operate
-      virtual uint32_t prefetcher_cache_operate([[maybe_unused]] champsim::address addr, [[maybe_unused]] champsim::address ip, [[maybe_unused]] bool cache_hit, [[maybe_unused]] bool useful_prefetch,
-                                                [[maybe_unused]] access_type type, [[maybe_unused]] uint32_t metadata_in) {return metadata_in;}
+      /**
+       * Called when a tag check is performed in the cache.
+       *
+       * \param addr The address of the packet. Includes offset bits for L1 caches;
+       *             zero offset otherwise. If ``virtual_prefetch`` is true, this is a
+       *             virtual address.
+       * \param ip The instruction pointer that initiated the demand. Zero for
+       *           prefetches from other levels.
+       * \param cache_hit True if this tag check is a hit.
+       * \param useful_prefetch True if this tag check hit a prior prefetch.
+       * \param type The access type (LOAD, RFO, PREFETCH, WRITE, or TRANSLATION).
+       * \param metadata_in Metadata carried by the packet.
+       * \return Metadata to store alongside the block.
+       */
+      virtual uint32_t prefetcher_cache_operate(champsim::address addr, champsim::address ip, bool cache_hit, bool useful_prefetch,
+                                                access_type type, uint32_t metadata_in) = 0;
 
-      //prefetcher cache fill
-      virtual uint32_t prefetcher_cache_fill([[maybe_unused]] champsim::address addr, [[maybe_unused]] long set, [[maybe_unused]] long way, [[maybe_unused]] bool prefetch, 
-                                                [[maybe_unused]] champsim::address evicted_addr, [[maybe_unused]] uint32_t metadata_in) {return metadata_in;}
+      /**
+       * Called when a miss is filled in the cache.
+       *
+       * \param addr The address of the filled block (same addressing rules as
+       *             prefetcher_cache_operate).
+       * \param set The cache set that the fill occurred in.
+       * \param way The cache way that the fill occurred in.
+       * \param prefetch True if the filled block was a prefetch.
+       * \param evicted_addr The address of the evicted block (default-constructed
+       *                     if bypass).
+       * \param metadata_in Metadata carried by the packet.
+       * \return Metadata to store alongside the block.
+       */
+      virtual uint32_t prefetcher_cache_fill(champsim::address addr, long set, long way, bool prefetch, 
+                                                champsim::address evicted_addr, uint32_t metadata_in) = 0;
 
-      //prefetcher cycle operate
-      virtual void prefetcher_cycle_operate() {}
+      /**
+       * Called each cycle after all other cache operations have completed.
+       */
+      virtual void prefetcher_cycle_operate() = 0;
 
-      //prefetcher final stats
-      virtual void prefetcher_final_stats() {}
+      /**
+       * Called at the end of the simulation. Can be used to print statistics.
+       */
+      virtual void prefetcher_final_stats() = 0;
 
-      //prefetcher branch operate
-      virtual void prefetcher_branch_operate([[maybe_unused]] champsim::address ip, [[maybe_unused]] uint8_t branch_type, [[maybe_unused]] champsim::address branch_target) {}
+      /**
+       * Called on branch operations. Useful for instruction prefetchers.
+       *
+       * \param ip The instruction pointer of the branch.
+       * \param branch_type One of BRANCH_DIRECT_JUMP, BRANCH_INDIRECT,
+       *        BRANCH_CONDITIONAL, BRANCH_DIRECT_CALL, BRANCH_INDIRECT_CALL,
+       *        BRANCH_RETURN, or BRANCH_OTHER.
+       * \param branch_target The target address of the branch.
+       */
+      virtual void prefetcher_branch_operate(champsim::address ip, uint8_t branch_type, champsim::address branch_target) = 0;
 
+      /**
+       * Issue a prefetch request into the parent cache.
+       *
+       * This delegates to the parent cache's prefetch mechanism. You do not
+       * need to store your own parent pointer to use this method.
+       *
+       * \param pf_addr The address to prefetch.
+       * \param fill_this_level If true, fill this cache level; otherwise fill
+       *        the next level down.
+       * \param prefetch_metadata Metadata to associate with the prefetch.
+       * \return True if the prefetch was successfully enqueued.
+       */
       bool prefetch_line(champsim::address pf_addr, bool fill_this_level, uint32_t prefetch_metadata) const;
+      /** \overload */
       bool prefetch_line(uint64_t pf_addr, bool fill_this_level, uint32_t prefetch_metadata) const;
+
+  private:
+      friend struct module_base<prefetcher, cache_module>;
+      cache_module* intern_ = nullptr;
+      void bind(cache_module* parent) { intern_ = parent; }
   };
 
 
+  /**
+   * Interface for cache replacement policy modules.
+   *
+   * Replacement policies are attached to a cache (cache_module). Implement the
+   * five virtual methods below and register with register_module to create a
+   * custom replacement policy.
+   */
   struct replacement: public module_base<replacement,cache_module> {
 
       virtual ~replacement() = default;
 
-      //initialize replacement
-      virtual void initialize_replacement() {}
+      /**
+       * Called when the cache is initialized.
+       * Use this to set up dynamic data structures.
+       */
+      virtual void initialize_replacement() = 0;
 
-      //find victim
-      virtual long find_victim([[maybe_unused]] uint32_t triggering_cpu, [[maybe_unused]] uint64_t instr_id, [[maybe_unused]] long set, [[maybe_unused]] const champsim::cache_block* current_set, [[maybe_unused]] champsim::address ip,
-                                      [[maybe_unused]] champsim::address full_addr, [[maybe_unused]] access_type type) { return -1; }
+      /**
+       * Called when a cache miss requires eviction.
+       *
+       * \param triggering_cpu The core index that initiated this access.
+       * \param instr_id Instruction count for examining program order of requests.
+       * \param set The cache set being accessed.
+       * \param current_set A pointer to the beginning of the set being accessed.
+       * \param ip The instruction that initiated the demand. Zero for prefetches
+       *           from other levels.
+       * \param full_addr The address of the packet.
+       * \param type The access type (LOAD, RFO, PREFETCH, WRITE, or TRANSLATION).
+       * \return The way index to evict, or the total number of ways to bypass.
+       */
+      virtual long find_victim(uint32_t triggering_cpu, uint64_t instr_id, long set, const champsim::cache_block* current_set, champsim::address ip,
+                                      champsim::address full_addr, access_type type) = 0;
 
-      //update replacement state
-      virtual void update_replacement_state([[maybe_unused]] uint32_t triggering_cpu, [[maybe_unused]] long set, [[maybe_unused]] long way, [[maybe_unused]] champsim::address full_addr,
-                                                  [[maybe_unused]] champsim::address ip, [[maybe_unused]] champsim::address victim_addr, [[maybe_unused]] access_type type, [[maybe_unused]] bool hit) {}
+      /**
+       * Called when a tag check completes (on both hits and misses).
+       *
+       * \param triggering_cpu The core index that initiated this access.
+       * \param set The cache set.
+       * \param way The cache way.
+       * \param full_addr The address of the packet.
+       * \param ip The instruction that initiated the demand.
+       * \param victim_addr The address of the evicted block (zero on hits).
+       * \param type The access type.
+       * \param hit True if the packet hit the cache.
+       */
+      virtual void update_replacement_state(uint32_t triggering_cpu, long set, long way, champsim::address full_addr,
+                                                  champsim::address ip, champsim::address victim_addr, access_type type, bool hit) = 0;
 
 
-      //replacement cache fill
-      virtual void replacement_cache_fill([[maybe_unused]] uint32_t triggering_cpu, [[maybe_unused]] long set, [[maybe_unused]] long way, [[maybe_unused]] champsim::address full_addr, 
-                                                  [[maybe_unused]] champsim::address ip, [[maybe_unused]] champsim::address victim_addr, [[maybe_unused]] access_type type);
+      /**
+       * Called when a block is filled in the cache.
+       *
+       * This is called with the same timing as find_victim(), and is
+       * additionally called when filling an invalid way.
+       *
+       * \param triggering_cpu The core index that initiated this fill.
+       * \param set The cache set.
+       * \param way The cache way.
+       * \param full_addr The address of the filled block.
+       * \param ip The instruction that initiated the demand.
+       * \param victim_addr The address of the evicted block (zero on hits).
+       * \param type The access type.
+       */
+      virtual void replacement_cache_fill(uint32_t triggering_cpu, long set, long way, champsim::address full_addr, 
+                                                  champsim::address ip, champsim::address victim_addr, access_type type) = 0;
 
-      //replacement final stats
-      virtual void replacement_final_stats() {}
+      /**
+       * Called at the end of the simulation. Can be used to print statistics.
+       */
+      virtual void replacement_final_stats() = 0;
 
   };
 
+  /**
+   * Interface for branch predictor modules.
+   *
+   * Branch predictors are attached to a core (core_module). Implement the
+   * three virtual methods below and register with register_module to create
+   * a custom branch predictor.
+   */
   struct branch_predictor: public module_base<branch_predictor,core_module> {
 
     virtual ~branch_predictor() = default;
 
-    //initialize branch predictor
-    virtual void initialize_branch_predictor() {}
+    /**
+     * Called when the core is initialized.
+     * Use this to set up dynamic data structures.
+     */
+    virtual void initialize_branch_predictor() = 0;
 
-    //last branch result
-    virtual void last_branch_result([[maybe_unused]] champsim::address ip, [[maybe_unused]] champsim::address target, [[maybe_unused]] bool taken, [[maybe_unused]] uint8_t branch_type) {}
+    /**
+     * Called when a branch is resolved. All parameters are guaranteed correct.
+     *
+     * \param ip The instruction pointer of the branch.
+     * \param target The correct target of the branch.
+     * \param taken True if the branch was taken.
+     * \param branch_type One of BRANCH_DIRECT_JUMP, BRANCH_INDIRECT,
+     *        BRANCH_CONDITIONAL, BRANCH_DIRECT_CALL, BRANCH_INDIRECT_CALL,
+     *        BRANCH_RETURN, or BRANCH_OTHER.
+     */
+    virtual void last_branch_result(champsim::address ip, champsim::address target, bool taken, uint8_t branch_type) = 0;
 
-    //predict branch
-    virtual bool predict_branch([[maybe_unused]] champsim::address ip, [[maybe_unused]] champsim::address predicted_target, [[maybe_unused]] bool always_taken, [[maybe_unused]] uint8_t branch_type) {return false;}
+    /**
+     * Called when a branch direction prediction is needed.
+     *
+     * \param ip The instruction pointer of the branch.
+     * \param predicted_target The predicted target from the BTB (may be incorrect).
+     * \param always_taken True if the BTB determines the branch is always taken.
+     * \param branch_type One of BRANCH_DIRECT_JUMP, BRANCH_INDIRECT,
+     *        BRANCH_CONDITIONAL, BRANCH_DIRECT_CALL, BRANCH_INDIRECT_CALL,
+     *        BRANCH_RETURN, or BRANCH_OTHER.
+     * \return True if the branch is predicted taken, false otherwise.
+     */
+    virtual bool predict_branch(champsim::address ip, champsim::address predicted_target, bool always_taken, uint8_t branch_type) = 0;
 
   };
 
+  /**
+   * Interface for branch target buffer (BTB) modules.
+   *
+   * BTBs are attached to a core (core_module). Implement the three virtual
+   * methods below and register with register_module to create a custom BTB.
+   */
   struct btb: public module_base<btb,core_module> {
 
     virtual ~btb() = default;
 
-    //initialize btb
-    virtual void initialize_btb() {}
+    /**
+     * Called when the core is initialized.
+     * Use this to set up dynamic data structures.
+     */
+    virtual void initialize_btb() = 0;
 
-    //update btb
-    virtual void update_btb([[maybe_unused]] champsim::address ip, [[maybe_unused]] champsim::address predicted_target, [[maybe_unused]] bool taken, [[maybe_unused]] uint8_t branch_type) {}
+    /**
+     * Called when a branch is resolved.
+     *
+     * \param ip The instruction pointer of the branch.
+     * \param predicted_target The correct target of the branch.
+     * \param taken True if the branch was taken.
+     * \param branch_type One of BRANCH_DIRECT_JUMP, BRANCH_INDIRECT,
+     *        BRANCH_CONDITIONAL, BRANCH_DIRECT_CALL, BRANCH_INDIRECT_CALL,
+     *        BRANCH_RETURN, or BRANCH_OTHER.
+     */
+    virtual void update_btb(champsim::address ip, champsim::address predicted_target, bool taken, uint8_t branch_type) = 0;
 
-    //btb prediction
-    virtual std::pair<champsim::address, bool> btb_prediction([[maybe_unused]] champsim::address ip, [[maybe_unused]] uint8_t branch_type) {return std::pair<champsim::address, bool>{};}
+    /**
+     * Called when a branch target prediction is needed.
+     *
+     * \param ip The instruction pointer of the branch.
+     * \param branch_type One of the branch type constants.
+     * \return A pair of (predicted target address, always-taken flag).
+     *         Return ``{champsim::address{}, false}`` if prediction fails.
+     */
+    virtual std::pair<champsim::address, bool> btb_prediction(champsim::address ip, uint8_t branch_type) = 0;
   };
 
-  // Environment module interface - the top-level module that owns/constructs the entire simulation
-
+  /**
+   * Interface for the top-level environment module.
+   *
+   * The environment owns and constructs the entire simulation. It provides
+   * access to all modules by interface type via view() and typed_view().
+   */
   struct environment_module : public module_base<environment_module, environment_module> {
     // Single generic view function: returns all modules of the given interface type.
     // Special interface_type "operable" returns all operable modules across all interfaces.
@@ -650,10 +958,10 @@ struct module_base {
       return result;
     }
 
-    virtual std::size_t get_num_cpus() const { return 0; }
-    virtual unsigned get_block_size() const { return 64; }
-    virtual unsigned get_page_size() const { return 4096; }
-    virtual int get_deadlock_cycles() const { return 500; }
+    virtual std::size_t get_num_cpus() const = 0;
+    virtual unsigned get_block_size() const = 0;
+    virtual unsigned get_page_size() const = 0;
+    virtual int get_deadlock_cycles() const = 0;
 
     // New: allow snooping of ModuleBuilder parameters by module name
     virtual const ModuleBuilder get_builder_params(const std::string& module_name) const = 0;
