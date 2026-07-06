@@ -208,6 +208,7 @@ bool CACHE::handle_fill(const fill_type& fill)
     if (!success) {
       return false;
     }
+    sim_stats.data_read.increment(std::pair{access_type::WRITE, fill.cpu});
   }
 
   champsim::address evicting_address{};
@@ -229,6 +230,8 @@ bool CACHE::handle_fill(const fill_type& fill)
     }
 
     *way = fill_block(fill, metadata_thru);
+    sim_stats.tag_write.increment(std::pair{fill.type, fill.cpu});
+    sim_stats.data_write.increment(std::pair{fill.type, fill.cpu});
   }
 
   // COLLECT STATS
@@ -250,6 +253,7 @@ bool CACHE::try_hit(const tag_lookup_type& handle_pkt)
 
   // access cache
   auto [set_begin, set_end] = get_set_span(handle_pkt.address);
+  sim_stats.tag_read.increment(std::pair{handle_pkt.type, handle_pkt.cpu});
   auto way = std::find_if(set_begin, set_end, [matcher = matches_address(handle_pkt.address)](const auto& x) { return x.valid && matcher(x); });
   const auto hit = (way != set_end);
   const auto useful_prefetch = (hit && way->prefetch && !handle_pkt.prefetch_from_this);
@@ -278,11 +282,19 @@ bool CACHE::try_hit(const tag_lookup_type& handle_pkt)
       ret->push_back(response);
     }
 
+    if (handle_pkt.type == access_type::WRITE) {
+      sim_stats.tag_write.increment(std::pair{handle_pkt.type, handle_pkt.cpu});
+      sim_stats.data_write.increment(std::pair{handle_pkt.type, handle_pkt.cpu});
+    } else {
+      sim_stats.data_read.increment(std::pair{handle_pkt.type, handle_pkt.cpu});
+    }
+
     way->dirty |= (handle_pkt.type == access_type::WRITE);
 
     // update prefetch stats and reset prefetch bit
     if (useful_prefetch) {
       ++sim_stats.pf_useful;
+      sim_stats.tag_write.increment(std::pair{handle_pkt.type, handle_pkt.cpu});
       way->prefetch = false;
     }
   }
@@ -866,6 +878,10 @@ void CACHE::end_phase(unsigned finished_cpu)
   roi_stats.misses = sim_stats.misses;
   roi_stats.miss_merge = sim_stats.miss_merge;
   roi_stats.fill = sim_stats.fill;
+  roi_stats.tag_read = sim_stats.tag_read;
+  roi_stats.tag_write = sim_stats.tag_write;
+  roi_stats.data_read = sim_stats.data_read;
+  roi_stats.data_write = sim_stats.data_write;
 
   roi_stats.pf_requested = sim_stats.pf_requested;
   roi_stats.pf_issued = sim_stats.pf_issued;

@@ -71,11 +71,13 @@ std::vector<std::string> champsim::plain_printer::format(CACHE::stats_type stats
   using misses_value_type = typename decltype(stats.misses)::value_type;
   using miss_merge_value_type = typename decltype(stats.miss_merge)::value_type;
   using fill_value_type = typename decltype(stats.fill)::value_type;
+  using structure_value_type = typename decltype(stats.tag_read)::value_type;
 
   std::vector<std::size_t> cpus;
 
   // build a vector of all existing cpus
-  auto stat_keys = {stats.hits.get_keys(), stats.misses.get_keys(), stats.miss_merge.get_keys(), stats.fill.get_keys()};
+  auto stat_keys = {stats.hits.get_keys(),      stats.misses.get_keys(),    stats.miss_merge.get_keys(), stats.fill.get_keys(),
+                    stats.tag_read.get_keys(),  stats.tag_write.get_keys(), stats.data_read.get_keys(),  stats.data_write.get_keys()};
   for (auto keys : stat_keys) {
     std::transform(std::begin(keys), std::end(keys), std::back_inserter(cpus), [](auto val) { return val.second; });
   }
@@ -89,6 +91,10 @@ std::vector<std::string> champsim::plain_printer::format(CACHE::stats_type stats
       stats.misses.allocate(std::pair{type, cpu});
       stats.miss_merge.allocate(std::pair{type, cpu});
       stats.fill.allocate(std::pair{type, cpu});
+      stats.tag_read.allocate(std::pair{type, cpu});
+      stats.tag_write.allocate(std::pair{type, cpu});
+      stats.data_read.allocate(std::pair{type, cpu});
+      stats.data_write.allocate(std::pair{type, cpu});
     }
   }
 
@@ -122,6 +128,21 @@ std::vector<std::string> champsim::plain_printer::format(CACHE::stats_type stats
     uint64_t total_downstream_demands = total_fill - stats.fill.value_or(std::pair{access_type::PREFETCH, cpu}, fill_value_type{});
     lines.push_back(
         fmt::format("cpu{}->{} AVERAGE MISS LATENCY: {} cycles", cpu, stats.name, ::print_ratio(stats.total_miss_latency_cycles, total_downstream_demands)));
+
+    structure_value_type tag_reads = 0;
+    structure_value_type tag_writes = 0;
+    structure_value_type data_reads = 0;
+    structure_value_type data_writes = 0;
+    for (const auto type : {access_type::LOAD, access_type::RFO, access_type::PREFETCH, access_type::WRITE, access_type::TRANSLATION}) {
+      tag_reads += stats.tag_read.value_or(std::pair{type, cpu}, structure_value_type{});
+      tag_writes += stats.tag_write.value_or(std::pair{type, cpu}, structure_value_type{});
+      data_reads += stats.data_read.value_or(std::pair{type, cpu}, structure_value_type{});
+      data_writes += stats.data_write.value_or(std::pair{type, cpu}, structure_value_type{});
+    }
+    if (tag_reads != 0 || tag_writes != 0 || data_reads != 0 || data_writes != 0) {
+      lines.push_back(fmt::format("cpu{}->{} CACHE STRUCTURE TAG_READ: {:10} TAG_WRITE: {:10} DATA_READ: {:10} DATA_WRITE: {:10}", cpu, stats.name,
+                                  tag_reads, tag_writes, data_reads, data_writes));
+    }
   }
 
   return lines;
