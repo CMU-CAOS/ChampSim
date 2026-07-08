@@ -85,6 +85,15 @@ std::vector<std::string> champsim::plain_printer::format(CACHE::stats_type stats
   auto uniq_end = std::unique(std::begin(cpus), std::end(cpus));
   cpus.erase(uniq_end, std::end(cpus));
 
+  // A cache with no recorded events has no stat keys at all; still report an
+  // all-zero stats block per CPU (e.g. an L1I fully served by the DIB) so
+  // downstream tooling can distinguish inactivity from missing output.
+  if (cpus.empty()) {
+    for (std::size_t missing_cpu = 0; missing_cpu < NUM_CPUS; ++missing_cpu) {
+      cpus.push_back(missing_cpu);
+    }
+  }
+
   for (const auto type : {access_type::LOAD, access_type::RFO, access_type::PREFETCH, access_type::WRITE, access_type::TRANSLATION}) {
     for (auto cpu : cpus) {
       stats.hits.allocate(std::pair{type, cpu});
@@ -139,10 +148,12 @@ std::vector<std::string> champsim::plain_printer::format(CACHE::stats_type stats
       data_reads += stats.data_read.value_or(std::pair{type, cpu}, structure_value_type{});
       data_writes += stats.data_write.value_or(std::pair{type, cpu}, structure_value_type{});
     }
-    if (tag_reads != 0 || tag_writes != 0 || data_reads != 0 || data_writes != 0) {
-      lines.push_back(fmt::format("cpu{}->{} CACHE STRUCTURE TAG_READ: {:10} TAG_WRITE: {:10} DATA_READ: {:10} DATA_WRITE: {:10}", cpu, stats.name,
-                                  tag_reads, tag_writes, data_reads, data_writes));
-    }
+    // Always print, zeros included: a cache with no accesses in the
+    // simulation window (e.g. L1I fully served by the DIB) reports zero,
+    // so downstream power models can distinguish inactivity from missing
+    // instrumentation.
+    lines.push_back(fmt::format("cpu{}->{} CACHE STRUCTURE TAG_READ: {:10} TAG_WRITE: {:10} DATA_READ: {:10} DATA_WRITE: {:10}", cpu, stats.name,
+                                tag_reads, tag_writes, data_reads, data_writes));
   }
 
   return lines;
